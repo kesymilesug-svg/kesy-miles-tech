@@ -428,7 +428,7 @@
       <a href="#director">Director</a>
       <a href="#booking">Booking</a>
       <a href="#contact">Contact</a>
-      <button class="auth-btn auth-login admin-nav-btn" onclick="openAdminLogin()">🔐 Management</button>
+      <button class="auth-btn auth-login admin-nav-btn" id="managerNavBtn" style="display:none" onclick="openAdminLogin()">🔐 Management</button>
       <div class="auth-actions" id="authActions">
         <button class="auth-btn auth-login" onclick="openAuth('login')">Login</button>
         <button class="auth-btn auth-signup" onclick="openAuth('signup')">Sign Up</button>
@@ -1430,6 +1430,24 @@ async function managerSupabaseReady(){
   const {data:{user}}=await supabaseClient.auth.getUser();
   return !!user && String(user.email||"").toLowerCase()===MANAGER_EMAIL;
 }
+async function isManagerSignedIn(){
+  try{
+    const {data:{user}}=await supabaseClient.auth.getUser();
+    return !!user && String(user.email||"").trim().toLowerCase()===MANAGER_EMAIL;
+  }catch(e){ return false; }
+}
+async function updateManagementVisibility(){
+  const btn=document.getElementById("managerNavBtn");
+  if(!btn)return;
+  const allowed=await isManagerSignedIn();
+  btn.style.display=allowed?"inline-flex":"none";
+  if(!allowed){
+    localStorage.removeItem(ADMIN_KEYS.session);
+    closeAdminLogin();
+    closeAdminDashboard();
+  }
+}
+
 function managerNotice(text,show=true){
   const el=document.getElementById("managerAccessNotice");
   if(!el)return;
@@ -1503,13 +1521,31 @@ const ADMIN_KEYS={hash:"kesyMilesAdminHash",recovery:"kesyMilesAdminRecovery",se
 async function sha256(text){const data=new TextEncoder().encode(text);const hash=await crypto.subtle.digest("SHA-256",data);return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,"0")).join("")}
 function adminConfigured(){return !!localStorage.getItem(ADMIN_KEYS.hash)}
 function adminSessionValid(){const x=Number(localStorage.getItem(ADMIN_KEYS.session)||0);return x>Date.now()}
-function openAdminLogin(){if(adminSessionValid()){openAdminDashboard();return}document.getElementById("adminLoginModal").classList.add("open");document.getElementById("adminPassword").focus()}
+async function openAdminLogin(){
+  if(!(await isManagerSignedIn())){
+    alert("Management access is available only to the manager account: "+MANAGER_EMAIL);
+    await updateManagementVisibility();
+    return;
+  }
+  if(adminSessionValid()){openAdminDashboard();return}
+  document.getElementById("adminLoginModal").classList.add("open");
+  document.getElementById("adminPassword").focus();
+}
 function closeAdminLogin(){document.getElementById("adminLoginModal").classList.remove("open")}
 function showAdminSetup(){closeAdminLogin();document.getElementById("adminSetupModal").classList.add("open")}
 function closeAdminSetup(){document.getElementById("adminSetupModal").classList.remove("open")}
 async function saveAdminSetup(e){e.preventDefault();const p=document.getElementById("newAdminPassword").value,r=document.getElementById("adminRecoveryCode").value.trim();const msg=document.getElementById("adminSetupMessage");if(!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}/.test(p)){msg.textContent="Use 12+ characters including uppercase, lowercase, number and symbol.";msg.className="auth-message show error";return}if(p!==document.getElementById("confirmAdminPassword").value){msg.textContent="Passwords do not match.";msg.className="auth-message show error";return}localStorage.setItem(ADMIN_KEYS.hash,await sha256(p));localStorage.setItem(ADMIN_KEYS.recovery,await sha256(r));localStorage.removeItem(ADMIN_KEYS.fails);localStorage.removeItem(ADMIN_KEYS.lock);msg.textContent="Management security saved. Keep your recovery code private.";msg.className="auth-message show success";setTimeout(()=>{closeAdminSetup();openAdminLogin()},700)}
 async function adminLogin(e){e.preventDefault();if(!adminConfigured()){showAdminSetup();return}const lock=Number(localStorage.getItem(ADMIN_KEYS.lock)||0);if(lock>Date.now()){showAuthMessage("adminLoginMessage","Management access is temporarily locked. Try again later.","error");return}const p=document.getElementById("adminPassword").value;const ok=(await sha256(p))===localStorage.getItem(ADMIN_KEYS.hash);if(!ok){let f=Number(localStorage.getItem(ADMIN_KEYS.fails)||0)+1;localStorage.setItem(ADMIN_KEYS.fails,f);if(f>=5){localStorage.setItem(ADMIN_KEYS.lock,Date.now()+5*60*1000);localStorage.removeItem(ADMIN_KEYS.fails);showAuthMessage("adminLoginMessage","Too many failed attempts. Management is locked for 5 minutes.","error")}else showAuthMessage("adminLoginMessage",`Incorrect management password. ${5-f} attempt(s) remaining.`,"error");return}localStorage.removeItem(ADMIN_KEYS.fails);localStorage.setItem(ADMIN_KEYS.session,Date.now()+30*60*1000);closeAdminLogin();openAdminDashboard()}
-function openAdminDashboard(){if(!adminSessionValid()){openAdminLogin();return}renderAdminDashboard();document.getElementById("adminDashboardModal").classList.add("open");document.body.style.overflow="hidden"}
+async function openAdminDashboard(){
+  if(!(await isManagerSignedIn())){
+    await updateManagementVisibility();
+    return;
+  }
+  if(!adminSessionValid()){openAdminLogin();return}
+  renderAdminDashboard();
+  document.getElementById("adminDashboardModal").classList.add("open");
+  document.body.style.overflow="hidden";
+}
 function closeAdminDashboard(){document.getElementById("adminDashboardModal").classList.remove("open");document.body.style.overflow=""}
 function adminLogout(){localStorage.removeItem(ADMIN_KEYS.session);closeAdminDashboard()}
 function showAdminTab(name,btn){document.querySelectorAll(".admin-panel").forEach(x=>x.classList.remove("active"));document.getElementById("adminTab-"+name).classList.add("active");document.querySelectorAll(".admin-tabs button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");if(name==='customers')loadManagerCustomers();if(name==='products')renderAdminProducts();if(name==='orders')renderAdminOrders();if(name==='settings')loadAdminSettings()}
@@ -1533,6 +1569,7 @@ function toggleMenu(){document.getElementById("nav").classList.toggle("show")}
 renderProducts();
 updateCart();
 updateAuthUI();
+updateManagementVisibility();
 setInterval(()=>{if(adminSessionValid()===false&&document.getElementById("adminDashboardModal")?.classList.contains("open")){closeAdminDashboard();}},30000);
 setInterval(()=>{if(getCurrentUser())touchLastSeen()},5*60*1000);
 document.getElementById("adminLoginModal").addEventListener("click",function(e){if(e.target===this)closeAdminLogin()});document.getElementById("adminSetupModal").addEventListener("click",function(e){if(e.target===this)closeAdminSetup()});document.getElementById("adminDashboardModal").addEventListener("click",function(e){if(e.target===this)closeAdminDashboard()});document.getElementById("adminEditProductModal").addEventListener("click",function(e){if(e.target===this)closeAdminEdit()});
@@ -1549,12 +1586,14 @@ document.querySelectorAll('.feature-modal').forEach(function(m){m.addEventListen
       const {data:profile}=await supabaseClient.from("profiles").select("name,email,phone,account_status").eq("id",session.user.id).maybeSingle();
       setCurrentUser({id:session.user.id,name:profile?.name||session.user.user_metadata?.name||"Customer",email:session.user.email||profile?.email||"",phone:profile?.phone||session.user.user_metadata?.phone||""}); await touchLastSeen();
     }
-  }catch(e){console.warn("Supabase session restore failed",e)}
+    await updateManagementVisibility();
+  }catch(e){console.warn("Supabase session restore failed",e); await updateManagementVisibility()}
   testSupabaseConnection();
 })();
 supabaseClient.auth.onAuthStateChange((event,session)=>{
   if(event==="PASSWORD_RECOVERY"){setTimeout(()=>document.getElementById("passwordRecoveryModal").classList.add("open"),50);}
   if(!session) setCurrentUser(null);
+  setTimeout(updateManagementVisibility,50);
 });
 </script>
 </body>
