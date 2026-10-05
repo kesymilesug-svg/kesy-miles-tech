@@ -1010,24 +1010,60 @@ function saveBusinessSettingsData(x){localStorage.setItem("kesyMilesSettings",JS
 loadManagedProducts();
 normalizeProductData();
 let cart = [];
+let cartOwnerId = null;
+let loggedOutCartLock = true;
 
-// Each customer has their own saved cart. The cart is hidden/cleared while logged out,
-// but restored when that same customer logs back in.
+// Each customer has a completely separate cart. A logged-out visitor has no active cart.
+// The saved cart is restored only after a real customer login, and logout removes the
+// visible cart immediately so an old/guest cart can never reappear.
 function getCartStorageKey(user){
   return user?.id ? `kesyMilesCart_${user.id}` : null;
 }
+function clearGuestAndLegacyCart(){
+  // Remove older/guest cart keys created by previous versions of the website.
+  try{
+    localStorage.removeItem("kesyMilesCart");
+    localStorage.removeItem("cart");
+    localStorage.removeItem("kesyMilesGuestCart");
+    localStorage.removeItem("kesyMilesCart_guest");
+  }catch(e){}
+}
 function saveCartForUser(user=getCurrentUser()){
   const key=getCartStorageKey(user);
-  if(!key)return;
+  if(!key || !user?.id || loggedOutCartLock)return;
   try{ localStorage.setItem(key,JSON.stringify(cart)); }catch(e){ console.warn("Could not save customer cart",e); }
 }
 function loadCartForUser(user=getCurrentUser()){
   const key=getCartStorageKey(user);
-  if(!key){ cart=[]; return; }
+  if(!key || !user?.id){
+    cart=[]; cartOwnerId=null; loggedOutCartLock=true; return;
+  }
   try{
     const saved=JSON.parse(localStorage.getItem(key)||"[]");
     cart=Array.isArray(saved)?saved:[];
-  }catch(e){ cart=[]; console.warn("Could not restore customer cart",e); }
+    cartOwnerId=user.id;
+    loggedOutCartLock=false;
+    clearGuestAndLegacyCart();
+  }catch(e){
+    cart=[]; cartOwnerId=user.id; loggedOutCartLock=false;
+    console.warn("Could not restore customer cart",e);
+  }
+}
+function clearActiveCartOnLogout(){
+  cart=[];
+  cartOwnerId=null;
+  loggedOutCartLock=true;
+  clearGuestAndLegacyCart();
+  const count=document.getElementById("cartCount");
+  if(count) count.textContent="0";
+  const items=document.getElementById("cartItems");
+  if(items) items.innerHTML="";
+  const empty=document.getElementById("cartEmptyPrompt");
+  if(empty) empty.style.display="block";
+  const total=document.getElementById("cartTotal");
+  if(total) total.textContent=money(0);
+  const modal=document.getElementById("cartModal");
+  if(modal) modal.classList.remove("open");
 }
 
 const money = n => "UGX " + Number(n).toLocaleString();
@@ -1201,20 +1237,18 @@ function getCurrentUser(){
 }
 function setCurrentUser(user){
   const previousUser=currentUserCache;
-  if(previousUser && previousUser.id && user?.id!==previousUser.id) saveCartForUser(previousUser);
-  currentUserCache=user||null;
-  if(user){
-    localStorage.setItem("kesyMilesCurrentUser",JSON.stringify(user));
-    loadCartForUser(user);
-    if(typeof updateCart==="function") updateCart();
-  }else{
+  if(previousUser && previousUser.id && user?.id!==previousUser.id && !loggedOutCartLock) saveCartForUser(previousUser);
+  if(!user){
+    currentUserCache=null;
     localStorage.removeItem("kesyMilesCurrentUser");
-    // A logged-out customer must not retain a cart or cart badge.
-    cart=[];
-    if(typeof updateCart==="function") updateCart();
-    const cartModal=document.getElementById("cartModal");
-    if(cartModal) cartModal.classList.remove("open");
+    clearActiveCartOnLogout();
+    updateAuthUI();
+    return;
   }
+  currentUserCache=user;
+  localStorage.setItem("kesyMilesCurrentUser",JSON.stringify(user));
+  loadCartForUser(user);
+  if(typeof updateCart==="function") updateCart();
   updateAuthUI();
 }
 async function syncCurrentUserFromSession(session){
@@ -1305,17 +1339,19 @@ async function signupUser(e){
   }catch(err){showAuthMessage("signupMessage",err.message||"Account creation failed. Check your Supabase setup.","error");console.warn(err)}
 }
 async function logoutUser(){
-  // Save this customer's cart first, so it can be restored when the same customer logs in again.
-  saveCartForUser(getCurrentUser());
+  // Save the customer's cart under that customer's own key before signing out.
+  const user=getCurrentUser();
+  if(user?.id){
+    loggedOutCartLock=false;
+    saveCartForUser(user);
+  }
+  // Lock and clear the active cart BEFORE Supabase finishes signing out. This prevents
+  // an old guest/previous-user cart from being rendered during the auth transition.
+  clearActiveCartOnLogout();
   try{await supabaseClient.auth.signOut()}catch(e){console.warn(e)}
-  // Clear the visible cart immediately on logout, including the cart count.
-  cart=[];
-  if(typeof updateCart==="function") updateCart();
-  const cartModal=document.getElementById("cartModal");
-  if(cartModal) cartModal.classList.remove("open");
   setCurrentUser(null);
   alert("You have been logged out. Your cart has been cleared.");
-} 
+}
 function updateAuthUI(){
   const user=getCurrentUser();
   document.getElementById("authActions").style.display=user?"none":"flex";
