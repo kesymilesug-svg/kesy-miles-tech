@@ -588,7 +588,7 @@
         <p>Need a price, product recommendation, repair or installation?</p>
         <div class="contact-item">📍 Amuca Trading Centre</div>
         <div class="contact-item">📞 +256 392-126-785</div>
-        <div class="contact-item">📞 +256 760-619-598</div>
+        <div class="contact-item">📞 +256 760-619-598</div><div class="contact-item">✉️ newtonisaac.oj.ac@gmail.com</div>
         <div class="contact-item">💳 Mobile Money • Bank • Cash on Delivery</div>
       </div>
       <form onsubmit="sendContact(event)">
@@ -625,6 +625,31 @@
 </nav>
 
 <a class="whatsapp" href="https://wa.me/256760619598" target="_blank" aria-label="WhatsApp">☏</a>
+
+
+<div class="modal" id="passwordRecoveryModal">
+  <div class="modal-box">
+    <button class="close" onclick="closeRecoveryModal()">×</button>
+    <div class="section-head" style="margin-bottom:18px">
+      <h2 style="font-size:28px">Set a New Password</h2>
+      <p>Choose a new password for your KESY MILES TECH account.</p>
+    </div>
+    <form onsubmit="updateRecoveredPassword(event)" style="padding:0;box-shadow:none">
+      <label>New Password</label>
+      <div class="password-wrap" style="margin-bottom:12px">
+        <input id="recoveryPassword" type="password" minlength="6" required placeholder="At least 6 characters">
+        <button class="password-toggle" type="button" onclick="togglePassword('recoveryPassword',this)">👁️</button>
+      </div>
+      <label>Confirm New Password</label>
+      <div class="password-wrap" style="margin-bottom:12px">
+        <input id="recoveryConfirm" type="password" minlength="6" required placeholder="Repeat your new password">
+        <button class="password-toggle" type="button" onclick="togglePassword('recoveryConfirm',this)">👁️</button>
+      </div>
+      <button class="btn primary" style="width:100%" type="submit">Update Password</button>
+      <div class="auth-message" id="recoveryMessage"></div>
+    </form>
+  </div>
+</div>
 
 <div class="modal" id="accountModal">
   <div class="modal-box">
@@ -683,7 +708,7 @@
         </div>
       </div>
       <button class="btn primary" style="width:100%" type="submit">Login</button>
-      <div class="auth-switch">Don't have an account? <button type="button" onclick="switchAuth('signup')">Create one</button></div>
+      <div class="auth-switch">Don't have an account? <button type="button" onclick="switchAuth('signup')">Create one</button></div><div style="text-align:right;margin-top:8px"><button type="button" class="auth-link" onclick="forgotPassword()">Forgot Password?</button></div>
       <div class="auth-message" id="loginMessage"></div>
     </form>
     <form id="signupForm" onsubmit="signupUser(event)" style="padding:0;box-shadow:none;display:none">
@@ -807,6 +832,11 @@
     <div style="display:flex;justify-content:space-between;font-size:20px;font-weight:900;margin:18px 0">
       <span>Total</span><span id="cartTotal">UGX 0</span>
     </div>
+    <div style="padding:12px;margin:10px 0 14px;border-radius:12px;background:#f3f7fb;color:var(--navy)">
+      <strong>Place your order</strong>
+      <div style="font-size:13px;margin-top:6px">WhatsApp: <a href="https://wa.me/256760619598" target="_blank" rel="noopener">+256 760-619-598</a></div>
+      <div style="font-size:13px;margin-top:4px">Email: <a href="mailto:newtonisaac.oj.ac@gmail.com">newtonisaac.oj.ac@gmail.com</a></div>
+    </div>
     <form onsubmit="checkout(event)" style="padding:0;box-shadow:none">
       <input id="oName" required placeholder="Full name" style="margin-bottom:9px">
       <input id="oPhone" required placeholder="Phone number" style="margin-bottom:9px">
@@ -814,7 +844,7 @@
       <select id="oPayment" style="margin-bottom:12px">
         <option>Mobile Money</option><option>Bank Payment</option><option>Cash on Delivery</option>
       </select>
-      <button class="btn primary" style="width:100%">Place Order via WhatsApp</button>
+      <button class="btn primary" style="width:100%">Place Order via WhatsApp</button><button class="btn outline" type="button" style="width:100%;margin-top:8px" onclick="emailOrder()">Place Order by Email</button>
     </form>
   </div>
 </div>
@@ -899,10 +929,22 @@
     <button class="close" onclick="closeAdminDashboard()">×</button>
     <div class="admin-header"><div><span class="admin-badge">● Management active</span><h2>Management Dashboard</h2><p>Control products, stock, photos, prices and business settings.</p></div><button class="btn outline" onclick="adminLogout()">Sign out</button></div>
     <div class="admin-tabs">
-      <button class="active" onclick="showAdminTab('overview',this)">Overview</button><button onclick="showAdminTab('products',this)">Products</button><button onclick="showAdminTab('orders',this)">Orders & Bookings</button><button onclick="showAdminTab('settings',this)">Settings</button><button onclick="showAdminTab('security',this)">Security</button>
+      <button class="active" onclick="showAdminTab('overview',this)">Overview</button><button onclick="showAdminTab('customers',this)">Customers</button><button onclick="showAdminTab('products',this)">Products</button><button onclick="showAdminTab('orders',this)">Orders & Bookings</button><button onclick="showAdminTab('settings',this)">Settings</button><button onclick="showAdminTab('security',this)">Security</button>
     </div>
     <div class="admin-toast" id="adminToast"></div>
-    <section class="admin-panel active" id="adminTab-overview" style="padding:0"><div class="admin-stat-grid"><div class="admin-stat"><strong id="adminTotalProducts">0</strong><span>Total products</span></div><div class="admin-stat"><strong id="adminAvailableProducts">0</strong><span>Available</span></div><div class="admin-stat"><strong id="adminSoldProducts">0</strong><span>Sold out</span></div><div class="admin-stat"><strong id="adminOrderCount">0</strong><span>Orders</span></div></div><div class="admin-card"><h3>Management controls</h3><p style="color:var(--muted)">Use <b>Products</b> to add products, upload or replace photos, change prices, mark stock as available/sold out, or remove products from the shop. Changes are saved on this device/browser.</p></div></section>
+    <section class="admin-panel active" id="adminTab-overview" style="padding:0"><div class="admin-stat-grid"><div class="admin-stat"><strong id="adminTotalProducts">0</strong><span>Total products</span></div><div class="admin-stat"><strong id="adminAvailableProducts">0</strong><span>Available</span></div><div class="admin-stat"><strong id="adminSoldProducts">0</strong><span>Sold out</span></div><div class="admin-stat"><strong id="adminOrderCount">0</strong><span>Orders</span></div><div class="admin-stat"><strong id="adminTotalCustomers">0</strong><span>Registered clients</span></div><div class="admin-stat"><strong id="adminActiveCustomers">0</strong><span>Active clients</span></div></div><div class="admin-card"><h3>Management controls</h3><p style="color:var(--muted)">Use <b>Products</b> to add products, upload or replace photos, change prices, mark stock as available/sold out, or remove products from the shop. Changes are saved on this device/browser.</p></div></section>
+    <section class="admin-panel" id="adminTab-customers" style="padding:0">
+      <div class="admin-card">
+        <h3>Customer Management</h3>
+        <p style="color:var(--muted)">Registered clients come from Supabase. Active means the customer has been seen within the last 15 minutes.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">
+          <input id="customerSearch" placeholder="Search name, email or phone" oninput="filterManagerCustomers()" style="flex:1;min-width:220px">
+          <button class="btn outline" type="button" onclick="loadManagerCustomers()">Refresh</button>
+        </div>
+        <div id="managerAccessNotice" class="notice" style="display:none"></div>
+        <div id="managerCustomerList" class="account-list"></div>
+      </div>
+    </section>
     <section class="admin-panel" id="adminTab-products" style="padding:0"><div class="admin-card"><h3>Add a new product</h3><form onsubmit="adminAddProduct(event)" style="padding:0;box-shadow:none"><div class="admin-form-grid"><div><label>Product name</label><input id="newProductName" required placeholder="e.g. Samsung Galaxy S25"></div><div><label>Category</label><input id="newProductCat" required placeholder="Smart Phones"></div><div><label>Price (UGX)</label><input id="newProductPrice" type="number" min="0" required placeholder="950000"></div><div><label>Stock quantity</label><input id="newProductStock" type="number" min="0" value="1" required placeholder="5"></div><div class="full"><label>Short description</label><textarea id="newProductDescription" rows="3" placeholder="Describe the product for customers..."></textarea></div><div><label>Storage / capacity</label><input id="newProductStorage" placeholder="e.g. 512 GB SSD"></div><div><label>Battery life</label><input id="newProductBattery" placeholder="e.g. Up to 10 hours"></div><div><label>Processor / main spec</label><input id="newProductProcessor" placeholder="e.g. Intel Core i7"></div><div><label>RAM / memory</label><input id="newProductRam" placeholder="e.g. 16 GB RAM"></div><div><label>Other specification</label><input id="newProductOther" placeholder="e.g. 15.6-inch Full HD"></div><div><label>Photo 1</label><input id="newProductImage1" type="file" accept="image/*" onchange="previewAdminImage(this,'newProductPreview1')"><img id="newProductPreview1" class="admin-preview"></div><div><label>Photo 2</label><input id="newProductImage2" type="file" accept="image/*" onchange="previewAdminImage(this,'newProductPreview2')"><img id="newProductPreview2" class="admin-preview"></div><div><label>Photo 3</label><input id="newProductImage3" type="file" accept="image/*" onchange="previewAdminImage(this,'newProductPreview3')"><img id="newProductPreview3" class="admin-preview"></div><div><label>Photo 4</label><input id="newProductImage4" type="file" accept="image/*" onchange="previewAdminImage(this,'newProductPreview4')"><img id="newProductPreview4" class="admin-preview"></div><div class="full"><button class="btn primary" type="submit">＋ Add Product</button></div></div></form></div><div class="admin-card"><h3>Manage existing products</h3><div id="adminProductList" class="admin-product-list"></div></div></section>
     <section class="admin-panel" id="adminTab-orders" style="padding:0"><div class="admin-card"><h3>Orders</h3><div id="adminOrdersList" class="account-list"></div></div><div class="admin-card"><h3>Service bookings</h3><div id="adminBookingsList" class="account-list"></div></div></section>
     <section class="admin-panel" id="adminTab-settings" style="padding:0"><div class="admin-card"><h3>Business settings</h3><form onsubmit="saveAdminSettings(event)" style="padding:0;box-shadow:none"><div class="admin-form-grid"><div><label>Business name</label><input id="setBusinessName"></div><div><label>Location</label><input id="setLocation"></div><div><label>Call number 1</label><input id="setPhone1"></div><div><label>Call/WhatsApp number 2</label><input id="setPhone2"></div><div><label>Email</label><input id="setEmail" type="email"></div><div><label>Default currency</label><input id="setCurrency" value="UGX"></div><div class="full"><label>Payment methods</label><input id="setPayments" placeholder="Mobile Money, Bank Payment, Cash on Delivery"></div><div class="full"><label>Delivery / service note</label><textarea id="setServiceNote"></textarea></div><div class="full"><button class="btn primary" type="submit">Save Business Settings</button></div></div></form></div></section>
@@ -1092,6 +1134,14 @@ function scrollViewed(direction){
   const row=document.getElementById("cartViewedItems");
   if(row) row.scrollBy({left:direction*Math.max(row.clientWidth*0.78,300),behavior:"smooth"});
 }
+function emailOrder(){
+  if(!cart.length){alert("Your cart is empty.");return}
+  const items=cart.map(p=>`${p.name} x${p.qty}`).join(", ");
+  const total=money(cart.reduce((s,p)=>s+p.price*p.qty,0));
+  const subject=encodeURIComponent("KESY MILES TECH Order");
+  const body=encodeURIComponent(`Hello KESY MILES TECH,\n\nI want to place an order.\n\nProducts: ${items}\nTotal: ${total}\nName: ${document.getElementById("oName")?.value||""}\nPhone: ${document.getElementById("oPhone")?.value||""}\nDelivery: ${document.getElementById("oAddress")?.value||""}\nPayment: ${document.getElementById("oPayment")?.value||""}`);
+  window.location.href=`mailto:newtonisaac.oj.ac@gmail.com?subject=${subject}&body=${body}`;
+}
 async function checkout(e){
   e.preventDefault();
   if(!cart.length){alert("Your cart is empty.");return}
@@ -1160,10 +1210,18 @@ async function loginUser(e){
     const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
     if(error) throw error;
     const u=data.user;
-    const {data:profile}=await supabaseClient.from("profiles").select("name,email,phone").eq("id",u.id).maybeSingle();
+    const {data:profile}=await supabaseClient.from("profiles").select("name,email,phone,account_status").eq("id",u.id).maybeSingle();
+    if(profile?.account_status==="suspended"){
+      await supabaseClient.auth.signOut();
+      throw new Error("This account has been suspended. Please contact KESY MILES TECH.");
+    }
     setCurrentUser({id:u.id,name:profile?.name||u.user_metadata?.name||"Customer",email:u.email,phone:profile?.phone||u.user_metadata?.phone||""});
+    await touchLastSeen();
     closeAuth(); alert("Welcome back, "+(profile?.name||u.user_metadata?.name||"Customer")+"!");
-  }catch(err){showAuthMessage("loginMessage","Login failed. Check your email/phone, password, and Supabase setup.","error");console.warn(err)}
+  }catch(err){
+    showAuthMessage("loginMessage",err.message||"Login failed. Check your details and try again.","error");
+    console.warn(err);
+  }
 }
 async function signupUser(e){
   e.preventDefault();
@@ -1241,23 +1299,41 @@ async function recordOrder(items,total,user){
   const localOrder={items,total,email:user.email,phone:user.phone,date:new Date().toLocaleString()};
   const orders=getOrders(); orders.push(localOrder); localStorage.setItem("kesyMilesOrders",JSON.stringify(orders));
   try{
-    const {data:profile}=await supabaseClient.from("profiles").select("id").eq("id",user.id).maybeSingle();
-    const {data:order,error}=await supabaseClient.from("orders").insert({user_id:profile?.id||user.id,customer_name:user.name,customer_email:user.email,customer_phone:user.phone,items_text:items,total_ugx:Number(String(total).replace(/[^0-9]/g,"")),delivery_address:document.getElementById("oAddress")?.value||"",payment_method:document.getElementById("oPayment")?.value||"",status:"pending"}).select("id").single();
+    const {data:order,error}=await supabaseClient.from("orders").insert({
+      customer_id:user.id,
+      customer_name:user.name,
+      phone:user.phone,
+      email:user.email,
+      delivery_address:document.getElementById("oAddress")?.value||"",
+      payment_method:document.getElementById("oPayment")?.value||"",
+      total_amount:Number(String(total).replace(/[^0-9]/g,"")),
+      status:"pending"
+    }).select("id").single();
     if(error) throw error;
     localOrder.supabase_id=order.id;
     console.log("Order saved to Supabase:",order.id);
-  }catch(e){ console.warn("Order kept locally; Supabase order save failed. Run the SQL setup if needed.",e); }
+  }catch(e){ console.warn("Order kept locally; Supabase order save failed.",e); }
   return localOrder;
 }
 async function recordBooking(service,date,details,user){
   const localBooking={service,date,details,email:user.email,phone:user.phone};
   const bookings=getBookings(); bookings.push(localBooking); localStorage.setItem("kesyMilesBookings",JSON.stringify(bookings));
   try{
-    const {data:booking,error}=await supabaseClient.from("bookings").insert({user_id:user.id,customer_name:user.name,customer_email:user.email,customer_phone:user.phone,service,booking_date:date,details,status:"pending"}).select("id").single();
+    const {data:booking,error}=await supabaseClient.from("bookings").insert({
+      customer_id:user.id,
+      customer_name:user.name,
+      phone:user.phone,
+      email:user.email,
+      service,
+      booking_date:date,
+      booking_time:null,
+      message:details||"",
+      status:"pending"
+    }).select("id").single();
     if(error) throw error;
     localBooking.supabase_id=booking.id;
     console.log("Booking saved to Supabase:",booking.id);
-  }catch(e){ console.warn("Booking kept locally; Supabase booking save failed. Run the SQL setup if needed.",e); }
+  }catch(e){ console.warn("Booking kept locally; Supabase booking save failed.",e); }
   return localBooking;
 }
 
@@ -1314,6 +1390,115 @@ function openSettingsPanel(){
 }
 function settingAction(item){alert(item+"\n\nThis option is ready for your account settings.")}
 
+
+const MANAGER_EMAIL="newtonisaac.oj.ac@gmail.com";
+let managerCustomersCache=[];
+
+async function forgotPassword(){
+  const email=prompt("Enter the email address used for your KESY MILES TECH account:");
+  if(!email)return;
+  try{
+    const {error}=await supabaseClient.auth.resetPasswordForEmail(email.trim().toLowerCase(),{
+      redirectTo:window.location.origin+window.location.pathname
+    });
+    if(error)throw error;
+    showAuthMessage("loginMessage","Password reset email sent. Check your inbox and follow the link to create a new password.","success");
+  }catch(err){
+    showAuthMessage("loginMessage",err.message||"Could not send the password reset email.","error");
+  }
+}
+function closeRecoveryModal(){document.getElementById("passwordRecoveryModal").classList.remove("open")}
+async function updateRecoveredPassword(e){
+  e.preventDefault();
+  const p=document.getElementById("recoveryPassword").value;
+  const c=document.getElementById("recoveryConfirm").value;
+  if(p!==c){showAuthMessage("recoveryMessage","Passwords do not match.","error");return}
+  try{
+    const {error}=await supabaseClient.auth.updateUser({password:p});
+    if(error)throw error;
+    showAuthMessage("recoveryMessage","Password updated successfully. You can now log in with your new password.","success");
+    setTimeout(closeRecoveryModal,900);
+  }catch(err){showAuthMessage("recoveryMessage",err.message||"Could not update the password.","error")}
+}
+async function touchLastSeen(){
+  try{
+    const {data:{user}}=await supabaseClient.auth.getUser();
+    if(user) await supabaseClient.from("profiles").update({last_seen:new Date().toISOString()}).eq("id",user.id);
+  }catch(e){console.warn("Last-seen update failed",e)}
+}
+async function managerSupabaseReady(){
+  const {data:{user}}=await supabaseClient.auth.getUser();
+  return !!user && String(user.email||"").toLowerCase()===MANAGER_EMAIL;
+}
+function managerNotice(text,show=true){
+  const el=document.getElementById("managerAccessNotice");
+  if(!el)return;
+  el.textContent=text;
+  el.style.display=show?"block":"none";
+}
+async function loadManagerCustomers(){
+  const list=document.getElementById("managerCustomerList");
+  if(!list)return;
+  list.innerHTML='<div class="account-empty">Loading customers...</div>';
+  if(!(await managerSupabaseReady())){
+    managerNotice("To view customer accounts securely, first log in to the website using the manager email "+MANAGER_EMAIL+". Your separate Management password still protects the Management area.");
+    list.innerHTML='<div class="account-empty">Manager Supabase sign-in is required to load customer data.</div>';
+    return;
+  }
+  managerNotice("",false);
+  const {data,error}=await supabaseClient.from("profiles").select("id,name,email,phone,created_at,last_seen,account_status").order("created_at",{ascending:false});
+  if(error){
+    list.innerHTML='<div class="account-empty">Customer data could not be loaded. Run the manager SQL setup supplied with this update.</div>';
+    console.warn(error);
+    return;
+  }
+  managerCustomersCache=data||[];
+  renderManagerCustomers(managerCustomersCache);
+  const now=Date.now();
+  const active=managerCustomersCache.filter(c=>c.account_status!=="suspended" && c.last_seen && now-new Date(c.last_seen).getTime()<=15*60*1000).length;
+  const total=managerCustomersCache.length;
+  const totalEl=document.getElementById("adminTotalCustomers"), activeEl=document.getElementById("adminActiveCustomers");
+  if(totalEl)totalEl.textContent=total;
+  if(activeEl)activeEl.textContent=active;
+}
+function renderManagerCustomers(rows){
+  const list=document.getElementById("managerCustomerList");
+  if(!list)return;
+  list.innerHTML=rows.length?rows.map(c=>{
+    const active=c.account_status!=="suspended" && c.last_seen && Date.now()-new Date(c.last_seen).getTime()<=15*60*1000;
+    const status=c.account_status==="suspended"?"Suspended":(active?"Active":"Inactive");
+    const created=c.created_at?new Date(c.created_at).toLocaleString():"—";
+    const seen=c.last_seen?new Date(c.last_seen).toLocaleString():"Never";
+    return `<div class="account-row" style="display:block">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <strong>${escapeHtml(c.name||"Customer")}</strong>
+        <span>${status}</span>
+      </div>
+      <small>${escapeHtml(c.email||"")} • ${escapeHtml(c.phone||"")}<br>Registered: ${escapeHtml(created)}<br>Last seen: ${escapeHtml(seen)}</small>
+      <div style="margin-top:9px;display:flex;gap:7px;flex-wrap:wrap">
+        ${c.account_status==="suspended"
+          ? `<button class="btn outline" type="button" onclick="setCustomerStatus('${c.id}','active')">Activate</button>`
+          : `<button class="btn outline" type="button" onclick="setCustomerStatus('${c.id}','suspended')">Suspend</button>`}
+      </div>
+    </div>`;
+  }).join(""):'<div class="account-empty">No registered customers found.</div>';
+}
+function filterManagerCustomers(){
+  const q=(document.getElementById("customerSearch")?.value||"").trim().toLowerCase();
+  const rows=managerCustomersCache.filter(c=>(c.name+" "+c.email+" "+c.phone).toLowerCase().includes(q));
+  renderManagerCustomers(rows);
+}
+async function setCustomerStatus(id,status){
+  if(!(await managerSupabaseReady())){alert("Please sign in with the manager email first.");return}
+  if(!confirm(status==="suspended"?"Suspend this customer account?":"Activate this customer account?"))return;
+  const {error}=await supabaseClient.from("profiles").update({account_status:status}).eq("id",id);
+  if(error){alert("Could not change the customer status: "+error.message);return}
+  await loadManagerCustomers();
+}
+function escapeHtml(value){
+  return String(value??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
+}
+
 const ADMIN_KEYS={hash:"kesyMilesAdminHash",recovery:"kesyMilesAdminRecovery",session:"kesyMilesAdminSession",fails:"kesyMilesAdminFails",lock:"kesyMilesAdminLock"};
 async function sha256(text){const data=new TextEncoder().encode(text);const hash=await crypto.subtle.digest("SHA-256",data);return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,"0")).join("")}
 function adminConfigured(){return !!localStorage.getItem(ADMIN_KEYS.hash)}
@@ -1327,9 +1512,9 @@ async function adminLogin(e){e.preventDefault();if(!adminConfigured()){showAdmin
 function openAdminDashboard(){if(!adminSessionValid()){openAdminLogin();return}renderAdminDashboard();document.getElementById("adminDashboardModal").classList.add("open");document.body.style.overflow="hidden"}
 function closeAdminDashboard(){document.getElementById("adminDashboardModal").classList.remove("open");document.body.style.overflow=""}
 function adminLogout(){localStorage.removeItem(ADMIN_KEYS.session);closeAdminDashboard()}
-function showAdminTab(name,btn){document.querySelectorAll(".admin-panel").forEach(x=>x.classList.remove("active"));document.getElementById("adminTab-"+name).classList.add("active");document.querySelectorAll(".admin-tabs button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");if(name==='products')renderAdminProducts();if(name==='orders')renderAdminOrders();if(name==='settings')loadAdminSettings()}
+function showAdminTab(name,btn){document.querySelectorAll(".admin-panel").forEach(x=>x.classList.remove("active"));document.getElementById("adminTab-"+name).classList.add("active");document.querySelectorAll(".admin-tabs button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");if(name==='customers')loadManagerCustomers();if(name==='products')renderAdminProducts();if(name==='orders')renderAdminOrders();if(name==='settings')loadAdminSettings()}
 function adminToast(t){const x=document.getElementById("adminToast");x.textContent=t;x.classList.add("show");setTimeout(()=>x.classList.remove("show"),2200)}
-function renderAdminDashboard(){document.getElementById("adminTotalProducts").textContent=products.length;document.getElementById("adminAvailableProducts").textContent=products.filter(p=>p.status!=="soldout").length;document.getElementById("adminSoldProducts").textContent=products.filter(p=>p.status==="soldout").length;document.getElementById("adminOrderCount").textContent=getOrders().length;renderAdminProducts();renderAdminOrders();loadAdminSettings()}
+function renderAdminDashboard(){document.getElementById("adminTotalProducts").textContent=products.length;document.getElementById("adminAvailableProducts").textContent=products.filter(p=>p.status!=="soldout").length;document.getElementById("adminSoldProducts").textContent=products.filter(p=>p.status==="soldout").length;document.getElementById("adminOrderCount").textContent=getOrders().length;renderAdminProducts();renderAdminOrders();loadAdminSettings();loadManagerCustomers()}
 function renderAdminProducts(){const box=document.getElementById("adminProductList");if(!box)return;box.innerHTML=products.length?products.map(p=>{const photos=getProductPhotos(p);return `<div class="admin-product"><img src="${photos[0]||p.img}" alt="${p.name}" onclick="openAdminProductPhoto(${p.id})" style="cursor:zoom-in"><div><h4>${p.name}</h4><div class="meta">${p.cat} • ${money(p.price)} • <b>${p.status==='soldout'?'SOLD OUT':'AVAILABLE'}</b><br>${photos.length} photo(s) • Stock: ${Number(p.stockQty)||0} • ${p.storage||'No storage spec'} • ${p.battery||'No battery spec'}</div></div><div class="admin-product-actions"><button onclick="adminEditProduct(${p.id})">✏️ Edit</button><button class="${p.status==='soldout'?'success':''}" onclick="adminToggleStock(${p.id})">${p.status==='soldout'?'✓ Mark Available':'⛔ Mark Sold Out'}</button><button class="danger" onclick="adminRemoveProduct(${p.id})">🗑 Remove</button></div></div>`}).join(''):'<div class="account-empty">No products in the shop.</div>'}
 function openAdminProductPhoto(id){const p=products.find(x=>x.id===id);if(!p)return;activeDetailProductId=id;activeDetailPhotoIndex=0;openSelectedProductPhoto()}
 function adminEditProduct(id){const p=products.find(x=>x.id===id);if(!p)return;normalizeProductData();document.getElementById('editProductId').value=id;document.getElementById('editProductName').value=p.name;document.getElementById('editProductCat').value=p.cat;document.getElementById('editProductPrice').value=p.price;document.getElementById('editProductStatus').value=p.status||'available';document.getElementById('editProductStock').value=Number(p.stockQty)||0;document.getElementById('editProductDescription').value=p.description||'';document.getElementById('editProductStorage').value=p.storage||'';document.getElementById('editProductBattery').value=p.battery||'';document.getElementById('editProductProcessor').value=p.processor||'';document.getElementById('editProductRam').value=p.ram||'';document.getElementById('editProductOther').value=p.other||'';const photos=getProductPhotos(p);for(let i=1;i<=4;i++){const pr=document.getElementById('editProductPreview'+i),src=photos[i-1]||'';pr.src=src;pr.style.display=src?'block':'none';document.getElementById('editProductImage'+i).value=''}document.getElementById('adminEditProductModal').classList.add('open')}
@@ -1349,8 +1534,9 @@ renderProducts();
 updateCart();
 updateAuthUI();
 setInterval(()=>{if(adminSessionValid()===false&&document.getElementById("adminDashboardModal")?.classList.contains("open")){closeAdminDashboard();}},30000);
+setInterval(()=>{if(getCurrentUser())touchLastSeen()},5*60*1000);
 document.getElementById("adminLoginModal").addEventListener("click",function(e){if(e.target===this)closeAdminLogin()});document.getElementById("adminSetupModal").addEventListener("click",function(e){if(e.target===this)closeAdminSetup()});document.getElementById("adminDashboardModal").addEventListener("click",function(e){if(e.target===this)closeAdminDashboard()});document.getElementById("adminEditProductModal").addEventListener("click",function(e){if(e.target===this)closeAdminEdit()});
-document.getElementById('authModal').addEventListener('click',function(e){if(e.target===this)closeAuth()});
+document.getElementById('authModal').addEventListener('click',function(e){if(e.target===this)closeAuth()});document.getElementById('passwordRecoveryModal').addEventListener('click',function(e){if(e.target===this)closeRecoveryModal()});
 document.getElementById('accountModal').addEventListener('click',function(e){if(e.target===this)closeAccount()});
 document.getElementById('productPhotoModal').addEventListener('click',function(e){if(e.target===this)closeProductPhoto()});
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeProductPhoto();document.querySelectorAll('.feature-modal.open').forEach(x=>x.classList.remove('open'));document.body.style.overflow=''}});
@@ -1360,13 +1546,14 @@ document.querySelectorAll('.feature-modal').forEach(function(m){m.addEventListen
   try{
     const {data:{session}}=await supabaseClient.auth.getSession();
     if(session?.user){
-      const {data:profile}=await supabaseClient.from("profiles").select("name,email,phone").eq("id",session.user.id).maybeSingle();
-      setCurrentUser({id:session.user.id,name:profile?.name||session.user.user_metadata?.name||"Customer",email:session.user.email||profile?.email||"",phone:profile?.phone||session.user.user_metadata?.phone||""});
+      const {data:profile}=await supabaseClient.from("profiles").select("name,email,phone,account_status").eq("id",session.user.id).maybeSingle();
+      setCurrentUser({id:session.user.id,name:profile?.name||session.user.user_metadata?.name||"Customer",email:session.user.email||profile?.email||"",phone:profile?.phone||session.user.user_metadata?.phone||""}); await touchLastSeen();
     }
   }catch(e){console.warn("Supabase session restore failed",e)}
   testSupabaseConnection();
 })();
-supabaseClient.auth.onAuthStateChange((_event,session)=>{
+supabaseClient.auth.onAuthStateChange((event,session)=>{
+  if(event==="PASSWORD_RECOVERY"){setTimeout(()=>document.getElementById("passwordRecoveryModal").classList.add("open"),50);}
   if(!session) setCurrentUser(null);
 });
 </script>
