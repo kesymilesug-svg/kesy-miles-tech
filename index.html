@@ -1170,13 +1170,37 @@ function getUsers(){
   try{return JSON.parse(localStorage.getItem("kesyMilesUsers")||"[]")}catch(e){return []}
 }
 function saveUsers(users){localStorage.setItem("kesyMilesUsers",JSON.stringify(users))}
+let currentUserCache=null;
 function getCurrentUser(){
-  try{return JSON.parse(localStorage.getItem("kesyMilesCurrentUser")||"null")}catch(e){return null}
+  if(currentUserCache)return currentUserCache;
+  try{
+    const saved=JSON.parse(localStorage.getItem("kesyMilesCurrentUser")||"null");
+    if(saved) currentUserCache=saved;
+    return saved;
+  }catch(e){return null}
 }
 function setCurrentUser(user){
+  currentUserCache=user||null;
   if(user) localStorage.setItem("kesyMilesCurrentUser",JSON.stringify(user));
   else localStorage.removeItem("kesyMilesCurrentUser");
   updateAuthUI();
+}
+async function syncCurrentUserFromSession(session){
+  if(!session?.user)return null;
+  try{
+    const u=session.user;
+    const {data:profile}=await supabaseClient.from("profiles").select("name,email,phone,account_status").eq("id",u.id).maybeSingle();
+    if(profile?.account_status==="suspended"){
+      setCurrentUser(null);
+      return null;
+    }
+    const user={id:u.id,name:profile?.name||u.user_metadata?.name||"Customer",email:u.email||profile?.email||"",phone:profile?.phone||u.user_metadata?.phone||""};
+    setCurrentUser(user);
+    return user;
+  }catch(e){
+    console.warn("Could not refresh customer profile",e);
+    return getCurrentUser();
+  }
 }
 function openAuth(mode="login"){
   document.getElementById("authModal").classList.add("open");
@@ -1579,20 +1603,27 @@ document.getElementById('productPhotoModal').addEventListener('click',function(e
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeProductPhoto();document.querySelectorAll('.feature-modal.open').forEach(x=>x.classList.remove('open'));document.body.style.overflow=''}});
 document.querySelectorAll('.feature-modal').forEach(function(m){m.addEventListener('click',function(e){if(e.target===m)closeFeaturePanel(m.id)})});
 
-(async function restoreSupabaseSession(){
+async function restoreSupabaseSession(){
   try{
     const {data:{session}}=await supabaseClient.auth.getSession();
     if(session?.user){
-      const {data:profile}=await supabaseClient.from("profiles").select("name,email,phone,account_status").eq("id",session.user.id).maybeSingle();
-      setCurrentUser({id:session.user.id,name:profile?.name||session.user.user_metadata?.name||"Customer",email:session.user.email||profile?.email||"",phone:profile?.phone||session.user.user_metadata?.phone||""}); await touchLastSeen();
+      const user=await syncCurrentUserFromSession(session);
+      if(user) await touchLastSeen();
+    }else{
+      // No Supabase session means there is no valid customer login.
+      setCurrentUser(null);
     }
     await updateManagementVisibility();
   }catch(e){console.warn("Supabase session restore failed",e); await updateManagementVisibility()}
   testSupabaseConnection();
-})();
+}
+restoreSupabaseSession();
 supabaseClient.auth.onAuthStateChange((event,session)=>{
   if(event==="PASSWORD_RECOVERY"){setTimeout(()=>document.getElementById("passwordRecoveryModal").classList.add("open"),50);}
-  if(!session) setCurrentUser(null);
+  // Only clear the customer UI for a real sign-out. Other auth events can carry a
+  // temporarily unavailable/null session while Supabase restores or refreshes it.
+  if(event==="SIGNED_OUT"){setCurrentUser(null);}
+  else if(session?.user){setTimeout(()=>syncCurrentUserFromSession(session),0);}
   setTimeout(updateManagementVisibility,50);
 });
 </script>
