@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KESY MILES TECH | Electronics & Technology</title>
-  <meta name="description" content="KESY MILES TECH - laptops, smartphones, cameras, flat screens, radios and accessories. Delivery, repairs and installations available at Amuca Trading Centre.">
+  <meta name="description" content="KESY MILES TECH - laptops, smartphones, cameras, flat screens, radios and accessories. Delivery, repairs, installations and internet installation available at Amuca Trading Centre.">
   <style>
     :root{
       --navy:#061b3a; --blue:#0b4ea2; --marine:#006b8f; --light:#f4f8fc;
@@ -458,7 +458,7 @@
       <div>
         <span class="eyebrow">YOUR TRUSTED ELECTRONICS STORE</span>
         <h1>Powering Your World With Better Technology.</h1>
-        <p>Shop quality laptops, smartphones, cameras, flat screens, radios and accessories. We also provide reliable repairs, installations and delivery.</p>
+        <p>Shop quality laptops, smartphones, cameras, flat screens, radios and accessories. We also provide reliable repairs, internet installation, other installations and delivery.</p>
         <div class="actions">
           <a class="btn primary" href="#products">Shop Products</a>
           <a class="btn secondary" href="#booking">Book a Service</a>
@@ -512,6 +512,7 @@
       <div class="services">
         <div class="service"><div class="icon">🔧</div><h3>Repairs</h3><p>Professional troubleshooting and repair for selected electronics and devices.</p></div>
         <div class="service"><div class="icon">📡</div><h3>Installations</h3><p>Camera, TV and other technology installation services for homes and businesses.</p></div>
+        <div class="service"><div class="icon">🌐</div><h3>Internet Installation</h3><p>Professional internet and network installation services for homes, offices and businesses.</p></div>
         <div class="service"><div class="icon">🚚</div><h3>Delivery</h3><p>Convenient delivery is available. Contact us to confirm your delivery area and fee.</p></div>
       </div>
     </div>
@@ -527,6 +528,7 @@
           <div class="feature">✓ Delivery available</div>
           <div class="feature">✓ Repair services</div>
           <div class="feature">✓ Installation services</div>
+          <div class="feature">✓ Internet installation</div>
           <div class="feature">✓ Mobile Money</div>
           <div class="feature">✓ Cash on delivery</div>
         </div>
@@ -569,7 +571,7 @@
         <div class="form-grid">
           <div><label>Full Name</label><input id="bName" required placeholder="Your name"></div>
           <div><label>Phone Number</label><input id="bPhone" required placeholder="+256 ..."></div>
-          <div><label>Service</label><select id="bService"><option>Repair</option><option>Installation</option><option>Consultation</option><option>Other</option></select></div>
+          <div><label>Service</label><select id="bService"><option>Repair</option><option>Installation</option><option>Internet Installation</option><option>Consultation</option><option>Other</option></select></div>
           <div><label>Preferred Date</label><input id="bDate" type="date" required></div>
           <div class="full"><label>Message / Location</label><textarea id="bMessage" placeholder="Tell us what you need and where the service is required."></textarea></div>
           <div class="full"><button class="btn primary" type="submit">Submit Booking Request</button></div>
@@ -915,7 +917,7 @@
 <footer>
   <div class="container">
     <strong>KESY MILES TECH</strong><br>
-    Amuca Trading Centre • Electronics • Repairs • Installations • Delivery<br>
+    Amuca Trading Centre • Electronics • Repairs • Installations • Internet Installation • Delivery<br>
     <small>© 2026 KESY MILES TECH. All rights reserved.</small>
   </div>
 </footer>
@@ -1150,9 +1152,10 @@ async function loginUser(e){
   let email=identifier;
   try{
     if(!identifier.includes("@")){
-      const {data:profile,error}=await supabaseClient.from("profiles").select("email").eq("phone",identifier).maybeSingle();
+      const {data:rpcEmail,error}=await supabaseClient.rpc("get_email_by_phone",{p_phone:identifier});
       if(error) throw error;
-      email=profile?.email||"";
+      email=rpcEmail||"";
+      if(!email) throw new Error("No account was found for that phone number.");
     }
     const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
     if(error) throw error;
@@ -1174,8 +1177,8 @@ async function signupUser(e){
     const {data,error}=await supabaseClient.auth.signUp({email,password,options:{data:{name,phone}}});
     if(error) throw error;
     if(data.user){
-      const {error:profileError}=await supabaseClient.from("profiles").upsert({id:data.user.id,name,email,phone},{onConflict:"id"});
-      if(profileError) throw profileError;
+      // The database trigger creates the profile row automatically after signup.
+      // Do not write to public.profiles here; this also works when email confirmation is required.
       if(data.session){
         setCurrentUser({id:data.user.id,name,email,phone});
         closeAuth();
@@ -1338,7 +1341,7 @@ async function adminSaveProduct(e){e.preventDefault();const id=Number(document.g
 function adminToggleStock(id){const p=products.find(x=>x.id===id);if(!p)return;p.status=p.status==='soldout'?'available':'soldout';if(p.status==='available'&&Number(p.stockQty)<=0)p.stockQty=1;if(p.status==='soldout')p.stockQty=0;saveManagedProducts();renderProducts();renderAdminDashboard();adminToast(p.status==='soldout'?'Product marked sold out.':'Product marked available.')}
 function adminRemoveProduct(id){const p=products.find(x=>x.id===id);if(!p)return;if(!confirm(`Remove ${p.name} from the shop?`))return;products=products.filter(x=>x.id!==id);saveManagedProducts();renderProducts();renderAdminDashboard();adminToast('Product removed from the shop.')}
 function renderAdminOrders(){const os=getOrders(),bs=getBookings();document.getElementById('adminOrdersList').innerHTML=os.length?os.slice().reverse().map(o=>`<div class="account-row"><strong>${o.items||'Order'}</strong><span>${o.total||''}<br><small>${o.date||''} • ${o.phone||o.email||''}</small></span></div>`).join(''):'<div class="account-empty">No orders recorded yet.</div>';document.getElementById('adminBookingsList').innerHTML=bs.length?bs.slice().reverse().map(b=>`<div class="account-row"><strong>${b.service||'Service booking'}</strong><span>${b.date||''}<br><small>${b.phone||b.email||''}</small></span></div>`).join(''):'<div class="account-empty">No bookings recorded yet.</div>'}
-function loadAdminSettings(){const x=loadBusinessSettings();document.getElementById('setBusinessName').value=x.businessName||'KESY MILES TECH';document.getElementById('setLocation').value=x.location||'AMUCA TRADING CENTRE';document.getElementById('setPhone1').value=x.phone1||'+256 392-126-785';document.getElementById('setPhone2').value=x.phone2||'+256 760-619-598';document.getElementById('setEmail').value=x.email||'newtonisaac.oj.ac@gmail.com';document.getElementById('setCurrency').value=x.currency||'UGX';document.getElementById('setPayments').value=x.payments||'Mobile Money, Bank Payment, Cash on Delivery';document.getElementById('setServiceNote').value=x.serviceNote||'Delivery, repairs and installations available.'}
+function loadAdminSettings(){const x=loadBusinessSettings();document.getElementById('setBusinessName').value=x.businessName||'KESY MILES TECH';document.getElementById('setLocation').value=x.location||'AMUCA TRADING CENTRE';document.getElementById('setPhone1').value=x.phone1||'+256 392-126-785';document.getElementById('setPhone2').value=x.phone2||'+256 760-619-598';document.getElementById('setEmail').value=x.email||'newtonisaac.oj.ac@gmail.com';document.getElementById('setCurrency').value=x.currency||'UGX';document.getElementById('setPayments').value=x.payments||'Mobile Money, Bank Payment, Cash on Delivery';document.getElementById('setServiceNote').value=x.serviceNote||'Delivery, repairs, installations and internet installation available.'}
 function saveAdminSettings(e){e.preventDefault();saveBusinessSettingsData({businessName:setBusinessName.value,location:setLocation.value,phone1:setPhone1.value,phone2:setPhone2.value,email:setEmail.value,currency:setCurrency.value,payments:setPayments.value,serviceNote:setServiceNote.value});adminToast('Business settings saved. Refresh the public page to apply header/contact text changes.');}
 function openAdminItem(){openAdminLogin()}
 function toggleMenu(){document.getElementById("nav").classList.toggle("show")}
