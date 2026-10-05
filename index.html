@@ -1011,6 +1011,25 @@ loadManagedProducts();
 normalizeProductData();
 let cart = [];
 
+// Each customer has their own saved cart. The cart is hidden/cleared while logged out,
+// but restored when that same customer logs back in.
+function getCartStorageKey(user){
+  return user?.id ? `kesyMilesCart_${user.id}` : null;
+}
+function saveCartForUser(user=getCurrentUser()){
+  const key=getCartStorageKey(user);
+  if(!key)return;
+  try{ localStorage.setItem(key,JSON.stringify(cart)); }catch(e){ console.warn("Could not save customer cart",e); }
+}
+function loadCartForUser(user=getCurrentUser()){
+  const key=getCartStorageKey(user);
+  if(!key){ cart=[]; return; }
+  try{
+    const saved=JSON.parse(localStorage.getItem(key)||"[]");
+    cart=Array.isArray(saved)?saved:[];
+  }catch(e){ cart=[]; console.warn("Could not restore customer cart",e); }
+}
+
 const money = n => "UGX " + Number(n).toLocaleString();
 
 function syncMobileSearch(value){ handleSearchInput(value); }
@@ -1103,6 +1122,7 @@ function addToCart(id){
   if(!p || p.status==="soldout" || Number(p.stockQty)<=0){alert("This product is currently sold out.");return} const existing=cart.find(x=>x.id===id);
   if(existing && existing.qty>=Number(p.stockQty)){alert("You cannot add more than the available stock.");return}
   existing ? existing.qty++ : cart.push({...p,qty:1});
+  saveCartForUser();
   updateCart(); alert(p.name+" added to cart.");
 }
 function updateCart(){
@@ -1119,7 +1139,7 @@ function updateCart(){
   renderCurrentlyViewed("cartViewedItems");
   if(getCurrentUser() && document.getElementById("accountModal").classList.contains("open")) renderAccount();
 }
-function removeCart(id){cart=cart.filter(p=>p.id!==id);updateCart()}
+function removeCart(id){cart=cart.filter(p=>p.id!==id);saveCartForUser();updateCart()}
 function openCart(){
   closeFeaturePanels();
   const searchModal=document.getElementById("searchResultsModal"); if(searchModal) searchModal.classList.remove("open");
@@ -1180,9 +1200,21 @@ function getCurrentUser(){
   }catch(e){return null}
 }
 function setCurrentUser(user){
+  const previousUser=currentUserCache;
+  if(previousUser && previousUser.id && user?.id!==previousUser.id) saveCartForUser(previousUser);
   currentUserCache=user||null;
-  if(user) localStorage.setItem("kesyMilesCurrentUser",JSON.stringify(user));
-  else localStorage.removeItem("kesyMilesCurrentUser");
+  if(user){
+    localStorage.setItem("kesyMilesCurrentUser",JSON.stringify(user));
+    loadCartForUser(user);
+    if(typeof updateCart==="function") updateCart();
+  }else{
+    localStorage.removeItem("kesyMilesCurrentUser");
+    // A logged-out customer must not retain a cart or cart badge.
+    cart=[];
+    if(typeof updateCart==="function") updateCart();
+    const cartModal=document.getElementById("cartModal");
+    if(cartModal) cartModal.classList.remove("open");
+  }
   updateAuthUI();
 }
 async function syncCurrentUserFromSession(session){
@@ -1272,7 +1304,18 @@ async function signupUser(e){
     e.target.reset();
   }catch(err){showAuthMessage("signupMessage",err.message||"Account creation failed. Check your Supabase setup.","error");console.warn(err)}
 }
-async function logoutUser(){try{await supabaseClient.auth.signOut()}catch(e){console.warn(e)}setCurrentUser(null);alert("You have been logged out.")} 
+async function logoutUser(){
+  // Save this customer's cart first, so it can be restored when the same customer logs in again.
+  saveCartForUser(getCurrentUser());
+  try{await supabaseClient.auth.signOut()}catch(e){console.warn(e)}
+  // Clear the visible cart immediately on logout, including the cart count.
+  cart=[];
+  if(typeof updateCart==="function") updateCart();
+  const cartModal=document.getElementById("cartModal");
+  if(cartModal) cartModal.classList.remove("open");
+  setCurrentUser(null);
+  alert("You have been logged out. Your cart has been cleared.");
+} 
 function updateAuthUI(){
   const user=getCurrentUser();
   document.getElementById("authActions").style.display=user?"none":"flex";
