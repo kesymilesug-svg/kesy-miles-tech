@@ -1639,6 +1639,19 @@ function settingAction(item){alert(item+"\n\nThis option is ready for your accou
 const MANAGER_EMAIL="newtonisaac.oj.ac@gmail.com";
 let managerCustomersCache=[];
 
+async function showAdminSetup(){
+  const message=document.getElementById("adminLoginMessage");
+  try{
+    const {error}=await supabaseClient.auth.resetPasswordForEmail(MANAGER_EMAIL,{
+      redirectTo:window.location.origin+window.location.pathname
+    });
+    if(error)throw error;
+    alert("Management password recovery email has been sent to "+MANAGER_EMAIL+". Open the email and follow the link to set a new management password.");
+  }catch(err){
+    alert("Could not send the management password recovery email. "+(err.message||"Please try again."));
+  }
+}
+
 async function forgotPassword(){
   const email=prompt("Enter the email address used for your KESY MILES TECH account:");
   if(!email)return;
