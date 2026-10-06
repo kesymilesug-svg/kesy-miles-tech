@@ -897,30 +897,16 @@
       <h2 style="font-size:30px">🔐 Management Sign-in</h2>
       <p>Private administration area for KESY MILES TECH.</p>
     </div>
-    <div class="admin-security-note">Security protection includes a separate admin session, password hashing, automatic lockout after repeated failed attempts, and an inactivity timeout.</div>
+    <div class="admin-security-note">Management sign-in uses your secure Supabase manager account. Use the same manager email and password you use for the KESY MILES TECH management account.</div>
     <form onsubmit="adminLogin(event)" style="padding:0;box-shadow:none">
-      <label>Management Password</label>
-      <div class="password-wrap" style="margin-bottom:12px"><input id="adminPassword" type="password" minlength="8" required placeholder="Enter admin password"><button class="password-toggle" type="button" onclick="togglePassword('adminPassword',this)">👁️</button></div>
+      <label>Manager Email</label>
+      <input id="adminEmail" type="email" autocomplete="username" required value="newtonisaac.oj.ac@gmail.com" placeholder="Enter manager email" style="margin-bottom:12px">
+      <label>Manager Password</label>
+      <div class="password-wrap" style="margin-bottom:12px"><input id="adminPassword" type="password" autocomplete="current-password" required placeholder="Enter Supabase account password"><button class="password-toggle" type="button" onclick="togglePassword('adminPassword',this)">👁️</button></div>
       <button class="btn primary" style="width:100%" type="submit">Sign in to Management</button>
       <div class="auth-message" id="adminLoginMessage"></div>
     </form>
-    <p class="settings-note">First time? The management password is created from the setup option below. Keep your recovery code private.</p>
-    <button class="btn outline" style="width:100%;margin-top:8px" onclick="showAdminSetup()">First-time / Reset Management Security</button>
-  </div>
-</div>
-
-<div class="modal admin-modal" id="adminSetupModal">
-  <div class="modal-box admin-login-box">
-    <button class="close" onclick="closeAdminSetup()">×</button>
-    <div class="section-head" style="margin-bottom:20px"><h2 style="font-size:28px">🛡️ Management Security Setup</h2><p>Create the private management password.</p></div>
-    <div class="admin-security-note">Use at least 12 characters with uppercase, lowercase, a number and a symbol. Your password is stored as a cryptographic hash in this browser.</div>
-    <form onsubmit="saveAdminSetup(event)" style="padding:0;box-shadow:none">
-      <label>New Management Password</label><div class="password-wrap" style="margin-bottom:12px"><input id="newAdminPassword" type="password" minlength="12" required placeholder="At least 12 characters"><button class="password-toggle" type="button" onclick="togglePassword('newAdminPassword',this)">👁️</button></div>
-      <label>Confirm Password</label><div class="password-wrap" style="margin-bottom:12px"><input id="confirmAdminPassword" type="password" minlength="12" required placeholder="Repeat password"><button class="password-toggle" type="button" onclick="togglePassword('confirmAdminPassword',this)">👁️</button></div>
-      <label>Recovery Code</label><input id="adminRecoveryCode" minlength="8" required placeholder="Create a private recovery code" style="margin-bottom:12px">
-      <button class="btn primary" style="width:100%" type="submit">Save Management Security</button>
-      <div class="auth-message" id="adminSetupMessage"></div>
-    </form>
+    <p class="settings-note">Use the password belonging to the manager account above. This is no longer a separate browser-only management password.</p>
   </div>
 </div>
 
@@ -1620,25 +1606,44 @@ function escapeHtml(value){
   return String(value??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 }
 
-const ADMIN_KEYS={hash:"kesyMilesAdminHash",recovery:"kesyMilesAdminRecovery",session:"kesyMilesAdminSession",fails:"kesyMilesAdminFails",lock:"kesyMilesAdminLock"};
-async function sha256(text){const data=new TextEncoder().encode(text);const hash=await crypto.subtle.digest("SHA-256",data);return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,"0")).join("")}
-function adminConfigured(){return !!localStorage.getItem(ADMIN_KEYS.hash)}
+const ADMIN_KEYS={session:"kesyMilesAdminSession",fails:"kesyMilesAdminFails",lock:"kesyMilesAdminLock"};
 function adminSessionValid(){const x=Number(localStorage.getItem(ADMIN_KEYS.session)||0);return x>Date.now()}
 async function openAdminLogin(){
-  if(!(await isManagerSignedIn())){
-    alert("Management access is available only to the manager account: "+MANAGER_EMAIL);
-    await updateManagementVisibility();
-    return;
-  }
-  if(adminSessionValid()){openAdminDashboard();return}
+  if(adminSessionValid() && await isManagerSignedIn()){openAdminDashboard();return}
+  const email=document.getElementById("adminEmail");
+  if(email) email.value=MANAGER_EMAIL;
   document.getElementById("adminLoginModal").classList.add("open");
   document.getElementById("adminPassword").focus();
 }
 function closeAdminLogin(){document.getElementById("adminLoginModal").classList.remove("open")}
-function showAdminSetup(){closeAdminLogin();document.getElementById("adminSetupModal").classList.add("open")}
-function closeAdminSetup(){document.getElementById("adminSetupModal").classList.remove("open")}
-async function saveAdminSetup(e){e.preventDefault();const p=document.getElementById("newAdminPassword").value,r=document.getElementById("adminRecoveryCode").value.trim();const msg=document.getElementById("adminSetupMessage");if(!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}/.test(p)){msg.textContent="Use 12+ characters including uppercase, lowercase, number and symbol.";msg.className="auth-message show error";return}if(p!==document.getElementById("confirmAdminPassword").value){msg.textContent="Passwords do not match.";msg.className="auth-message show error";return}localStorage.setItem(ADMIN_KEYS.hash,await sha256(p));localStorage.setItem(ADMIN_KEYS.recovery,await sha256(r));localStorage.removeItem(ADMIN_KEYS.fails);localStorage.removeItem(ADMIN_KEYS.lock);msg.textContent="Management security saved. Keep your recovery code private.";msg.className="auth-message show success";setTimeout(()=>{closeAdminSetup();openAdminLogin()},700)}
-async function adminLogin(e){e.preventDefault();if(!adminConfigured()){showAdminSetup();return}const lock=Number(localStorage.getItem(ADMIN_KEYS.lock)||0);if(lock>Date.now()){showAuthMessage("adminLoginMessage","Management access is temporarily locked. Try again later.","error");return}const p=document.getElementById("adminPassword").value;const ok=(await sha256(p))===localStorage.getItem(ADMIN_KEYS.hash);if(!ok){let f=Number(localStorage.getItem(ADMIN_KEYS.fails)||0)+1;localStorage.setItem(ADMIN_KEYS.fails,f);if(f>=5){localStorage.setItem(ADMIN_KEYS.lock,Date.now()+5*60*1000);localStorage.removeItem(ADMIN_KEYS.fails);showAuthMessage("adminLoginMessage","Too many failed attempts. Management is locked for 5 minutes.","error")}else showAuthMessage("adminLoginMessage",`Incorrect management password. ${5-f} attempt(s) remaining.`,"error");return}localStorage.removeItem(ADMIN_KEYS.fails);localStorage.setItem(ADMIN_KEYS.session,Date.now()+30*60*1000);closeAdminLogin();openAdminDashboard()}
+async function adminLogin(e){
+  e.preventDefault();
+  const email=(document.getElementById("adminEmail").value||"").trim().toLowerCase();
+  const password=document.getElementById("adminPassword").value;
+  if(email!==MANAGER_EMAIL){showAuthMessage("adminLoginMessage","This email is not the authorized KESY MILES TECH manager email.","error");return}
+  const lock=Number(localStorage.getItem(ADMIN_KEYS.lock)||0);
+  if(lock>Date.now()){showAuthMessage("adminLoginMessage","Management access is temporarily locked. Try again later.","error");return}
+  try{
+    const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
+    if(error) throw error;
+    const user=data?.user;
+    if(!user || String(user.email||"").trim().toLowerCase()!==MANAGER_EMAIL){
+      await supabaseClient.auth.signOut();
+      throw new Error("This Supabase account is not the authorized manager account.");
+    }
+    localStorage.removeItem(ADMIN_KEYS.fails);
+    localStorage.removeItem(ADMIN_KEYS.lock);
+    localStorage.setItem(ADMIN_KEYS.session,Date.now()+30*60*1000);
+    await updateManagementVisibility();
+    closeAdminLogin();
+    openAdminDashboard();
+  }catch(err){
+    let f=Number(localStorage.getItem(ADMIN_KEYS.fails)||0)+1;
+    localStorage.setItem(ADMIN_KEYS.fails,f);
+    if(f>=5){localStorage.setItem(ADMIN_KEYS.lock,Date.now()+5*60*1000);localStorage.removeItem(ADMIN_KEYS.fails);showAuthMessage("adminLoginMessage","Too many failed attempts. Management is locked for 5 minutes.","error");}
+    else showAuthMessage("adminLoginMessage",err.message||`Manager sign-in failed. ${5-f} attempt(s) remaining.`,"error");
+  }
+}
 async function openAdminDashboard(){
   if(!(await isManagerSignedIn())){
     await updateManagementVisibility();
@@ -1675,7 +1680,7 @@ updateAuthUI();
 updateManagementVisibility();
 setInterval(()=>{if(adminSessionValid()===false&&document.getElementById("adminDashboardModal")?.classList.contains("open")){closeAdminDashboard();}},30000);
 setInterval(()=>{if(getCurrentUser())touchLastSeen()},5*60*1000);
-document.getElementById("adminLoginModal").addEventListener("click",function(e){if(e.target===this)closeAdminLogin()});document.getElementById("adminSetupModal").addEventListener("click",function(e){if(e.target===this)closeAdminSetup()});document.getElementById("adminDashboardModal").addEventListener("click",function(e){if(e.target===this)closeAdminDashboard()});document.getElementById("adminEditProductModal").addEventListener("click",function(e){if(e.target===this)closeAdminEdit()});
+document.getElementById("adminLoginModal").addEventListener("click",function(e){if(e.target===this)closeAdminLogin()});document.getElementById("adminDashboardModal").addEventListener("click",function(e){if(e.target===this)closeAdminDashboard()});document.getElementById("adminEditProductModal").addEventListener("click",function(e){if(e.target===this)closeAdminEdit()});
 document.getElementById('authModal').addEventListener('click',function(e){if(e.target===this)closeAuth()});document.getElementById('passwordRecoveryModal').addEventListener('click',function(e){if(e.target===this)closeRecoveryModal()});
 document.getElementById('accountModal').addEventListener('click',function(e){if(e.target===this)closeAccount()});
 document.getElementById('productPhotoModal').addEventListener('click',function(e){if(e.target===this)closeProductPhoto()});
