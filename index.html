@@ -919,7 +919,7 @@
       <button class="active" onclick="showAdminTab('overview',this)">Overview</button><button onclick="showAdminTab('customers',this)">Customers</button><button onclick="showAdminTab('products',this)">Products</button><button onclick="showAdminTab('orders',this)">Orders & Bookings</button><button onclick="showAdminTab('settings',this)">Settings</button><button onclick="showAdminTab('security',this)">Security</button>
     </div>
     <div class="admin-toast" id="adminToast"></div>
-    <section class="admin-panel active" id="adminTab-overview" style="padding:0"><div class="admin-stat-grid"><div class="admin-stat"><strong id="adminTotalProducts">0</strong><span>Total products</span></div><div class="admin-stat"><strong id="adminAvailableProducts">0</strong><span>Available</span></div><div class="admin-stat"><strong id="adminSoldProducts">0</strong><span>Sold out</span></div><div class="admin-stat"><strong id="adminOrderCount">0</strong><span>Orders</span></div><div class="admin-stat"><strong id="adminTotalCustomers">0</strong><span>Registered clients</span></div><div class="admin-stat"><strong id="adminActiveCustomers">0</strong><span>Active clients</span></div></div><div class="admin-card"><h3>Management controls</h3><p style="color:var(--muted)">Use <b>Products</b> to add products, upload or replace photos, change prices, mark stock as available/sold out, or remove products from the shop. Changes are saved on this device/browser.</p></div></section>
+    <section class="admin-panel active" id="adminTab-overview" style="padding:0"><div class="admin-stat-grid"><div class="admin-stat"><strong id="adminTotalProducts">0</strong><span>Total products</span></div><div class="admin-stat"><strong id="adminAvailableProducts">0</strong><span>Available</span></div><div class="admin-stat"><strong id="adminSoldProducts">0</strong><span>Sold out</span></div><div class="admin-stat"><strong id="adminOrderCount">0</strong><span>Orders</span></div><div class="admin-stat"><strong id="adminTotalCustomers">0</strong><span>Registered clients</span></div><div class="admin-stat"><strong id="adminActiveCustomers">0</strong><span>Active clients</span></div></div><div class="admin-card"><h3>Management controls</h3><p style="color:var(--muted)">Use <b>Products</b> to add products, upload or replace photos, change prices, mark stock as available/sold out, or remove products from the shop. Changes are saved to the shared online product catalog so customers can receive updates immediately.</p></div></section>
     <section class="admin-panel" id="adminTab-customers" style="padding:0">
       <div class="admin-card">
         <h3>Customer Management</h3>
@@ -1017,6 +1017,116 @@ function saveManagedProducts(){
   localStorage.setItem("kesyMilesProducts",JSON.stringify(products));
   try{window.dispatchEvent(new CustomEvent("kesy-products-updated"));}catch(e){}
 }
+
+// Cloud product sync: Supabase is the shared source of truth for products.
+// localStorage remains only as a fast cache/offline fallback.
+function productToSupabaseRow(p){
+  return {
+    id: p.supabase_id || undefined,
+    name: String(p.name||"").trim(),
+    category: String(p.cat||"").trim(),
+    description: String(p.description||""),
+    price: Number(p.price)||0,
+    image_url: String(p.img||""),
+    stock: Math.max(0,Number(p.stockQty)||0),
+    available: p.status !== "soldout" && Number(p.stockQty)>0
+  };
+}
+function supabaseRowToProduct(row){
+  return {
+    id: row.id, supabase_id: row.id,
+    name: row.name||"Product", cat: row.category||"Accessories",
+    price: Number(row.price)||0, img: row.image_url||"",
+    photos: row.image_url?[row.image_url]:[],
+    status: row.available && Number(row.stock)>0 ? "available" : "soldout",
+    stockQty: Math.max(0,Number(row.stock)||0),
+    description: row.description||"", storage:"", battery:"", processor:"", ram:"", other:"",
+    created_at: row.created_at||""
+  };
+}
+let productsCloudReady=false;
+let productsRealtimeChannel=null;
+let productSyncBusy=false;
+
+async function loadProductsFromSupabase(showNotice=false){
+  try{
+    const {data,error}=await supabaseClient.from("products").select("id,name,category,description,price,image_url,stock,available,created_at").order("created_at",{ascending:true});
+    if(error) throw error;
+    if(Array.isArray(data) && data.length){
+      products=data.map(supabaseRowToProduct);
+      normalizeProductData();
+      localStorage.setItem("kesyMilesProducts",JSON.stringify(products));
+      productsCloudReady=true;
+      renderProducts();
+      renderCurrentlyViewed("cartViewedItems");
+      if(showNotice) adminToast("Products synchronized with the online store.");
+    }else if(Array.isArray(data) && data.length===0){
+      productsCloudReady=true;
+    }
+    return true;
+  }catch(err){
+    productsCloudReady=false;
+    console.warn("Cloud product load failed; using cached products.",err);
+    return false;
+  }
+}
+
+async function upsertProductToSupabase(p){
+  const row=productToSupabaseRow(p);
+  delete row.id;
+  let result;
+  if(p.supabase_id){
+    result=await supabaseClient.from("products").update(row).eq("id",p.supabase_id).select("id,name,category,description,price,image_url,stock,available,created_at").single();
+  }else{
+    result=await supabaseClient.from("products").insert(row).select("id,name,category,description,price,image_url,stock,available,created_at").single();
+  }
+  if(result.error) throw result.error;
+  Object.assign(p,supabaseRowToProduct(result.data));
+  return p;
+}
+
+async function deleteProductFromSupabase(p){
+  if(!p?.supabase_id)return true;
+  const {error}=await supabaseClient.from("products").delete().eq("id",p.supabase_id);
+  if(error) throw error;
+  return true;
+}
+
+function startProductsRealtime(){
+  try{
+    if(productsRealtimeChannel) supabaseClient.removeChannel(productsRealtimeChannel);
+    productsRealtimeChannel=supabaseClient.channel("kesy-products-live")
+      .on("postgres_changes",{event:"*",schema:"public",table:"products"},async(payload)=>{
+        const event=payload.eventType;
+        const row=payload.new||payload.old;
+        const name=payload.new?.name||payload.old?.name||"Product";
+        // Re-read the table so every browser receives the same complete catalog.
+        await loadProductsFromSupabase(false);
+        if(event==="INSERT") showLiveProductNotice("New product added: "+name);
+        else if(event==="UPDATE") showLiveProductNotice("Product updated: "+name);
+        else if(event==="DELETE") showLiveProductNotice("Product removed: "+name);
+      })
+      .subscribe((status)=>console.log("KESY product live updates:",status));
+  }catch(e){console.warn("Product realtime subscription failed",e)}
+}
+
+function showLiveProductNotice(message){
+  let n=document.getElementById("liveProductNotice");
+  if(!n){
+    n=document.createElement("div"); n.id="liveProductNotice";
+    n.style.cssText="position:fixed;top:92px;left:50%;transform:translateX(-50%);z-index:50000;background:var(--navy);color:#fff;padding:12px 18px;border-radius:999px;box-shadow:0 12px 30px rgba(0,0,0,.22);font-weight:800;font-size:13px;max-width:92vw;text-align:center;";
+    document.body.appendChild(n);
+  }
+  n.textContent="✓ "+message; n.style.display="block";
+  clearTimeout(showLiveProductNotice.timer);
+  showLiveProductNotice.timer=setTimeout(()=>{n.style.display="none"},3500);
+}
+
+async function initializeCloudProducts(){
+  const ok=await loadProductsFromSupabase(false);
+  if(ok) startProductsRealtime();
+}
+
 function loadBusinessSettings(){try{return JSON.parse(localStorage.getItem("kesyMilesSettings")||"{}")}catch(e){return {}}}
 function saveBusinessSettingsData(x){localStorage.setItem("kesyMilesSettings",JSON.stringify(x))}
 loadManagedProducts();
@@ -1871,7 +1981,29 @@ function adminEditProduct(id){const p=products.find(x=>x.id===id);if(!p)return;n
 function closeAdminEdit(){document.getElementById('adminEditProductModal').classList.remove('open')}
 function previewAdminImage(input,target){const f=input.files&&input.files[0];if(!f)return;const img=document.getElementById(target);img.src=URL.createObjectURL(f);img.style.display='block'}
 function compressAdminImage(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=e=>{const im=new Image();im.onload=()=>{const max=1000,scale=Math.min(1,max/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*scale);c.height=Math.round(im.height*scale);c.getContext('2d').drawImage(im,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.82))};im.onerror=reject;im.src=e.target.result};r.onerror=reject;r.readAsDataURL(file)})}
-async function adminAddProduct(e){e.preventDefault();const photos=[];for(let i=1;i<=4;i++){const f=document.getElementById('newProductImage'+i).files[0];if(f)photos.push(await compressAdminImage(f))}if(!photos.length)photos.push('https://images.unsplash.com/photo-1560472354-b33ff0c44a43?auto=format&fit=crop&w=700&q=80');const p={id:Date.now(),name:document.getElementById('newProductName').value.trim(),cat:document.getElementById('newProductCat').value.trim(),price:Number(document.getElementById('newProductPrice').value),stockQty:Math.max(0,Number(document.getElementById('newProductStock').value)||0),img:photos[0],photos,status:Number(document.getElementById('newProductStock').value)>0?'available':'soldout',description:document.getElementById('newProductDescription').value.trim(),storage:document.getElementById('newProductStorage').value.trim(),battery:document.getElementById('newProductBattery').value.trim(),processor:document.getElementById('newProductProcessor').value.trim(),ram:document.getElementById('newProductRam').value.trim(),other:document.getElementById('newProductOther').value.trim()};products.push(p);saveManagedProducts();renderProducts();renderAdminDashboard();e.target.reset();for(let i=1;i<=4;i++)document.getElementById('newProductPreview'+i).style.display='none';adminToast('Product added successfully with '+photos.length+' photo(s).')}
+async function adminAddProduct(e){
+  e.preventDefault();
+  const photos=[];
+  for(let i=1;i<=4;i++){const f=document.getElementById('newProductImage'+i).files[0];if(f)photos.push(await compressAdminImage(f))}
+  if(!photos.length)photos.push('https://images.unsplash.com/photo-1560472354-b33ff0c44a43?auto=format&fit=crop&w=700&q=80');
+  const stock=Math.max(0,Number(document.getElementById('newProductStock').value)||0);
+  const p={id:'local-'+Date.now(),name:document.getElementById('newProductName').value.trim(),cat:document.getElementById('newProductCat').value.trim(),price:Number(document.getElementById('newProductPrice').value),stockQty:stock,img:photos[0],photos,status:stock>0?'available':'soldout',description:document.getElementById('newProductDescription').value.trim(),storage:document.getElementById('newProductStorage').value.trim(),battery:document.getElementById('newProductBattery').value.trim(),processor:document.getElementById('newProductProcessor').value.trim(),ram:document.getElementById('newProductRam').value.trim(),other:document.getElementById('newProductOther').value.trim()};
+  products.push(p); saveManagedProducts(); renderProducts(); renderAdminDashboard();
+  try{
+    if(productsCloudReady){
+      await upsertProductToSupabase(p);
+      saveManagedProducts(); renderProducts();
+      showLiveProductNotice("New product added: "+p.name);
+      adminToast('Product added and published online immediately.');
+    }else{
+      adminToast('Product added on this device. Cloud product table is not available yet.');
+    }
+  }catch(err){
+    console.error('Cloud product insert failed',err);
+    adminToast('Product added locally, but could not publish online: '+(err.message||'check Supabase products table/RLS'));
+  }
+  e.target.reset(); for(let i=1;i<=4;i++)document.getElementById('newProductPreview'+i).style.display='none';
+}
 async function adminSaveProduct(e){
   e.preventDefault();
   const id=Number(document.getElementById('editProductId').value),p=products.find(x=>x.id===id);
@@ -1899,22 +2031,34 @@ async function adminSaveProduct(e){
   renderProducts();
   renderAdminDashboard();
   if(document.getElementById('productDetailModal')?.classList.contains('open') && activeDetailProductId===id) openProductDetail(id);
+  try{
+    if(productsCloudReady){ await upsertProductToSupabase(p); saveManagedProducts(); renderProducts(); showLiveProductNotice("Product updated: "+p.name); adminToast('Changes saved and published online.'); }
+    else adminToast('Changes saved on this device; cloud product table is not available.');
+  }catch(err){ console.error('Cloud product update failed',err); adminToast('Changes saved locally, but cloud update failed.'); }
   closeAdminEdit();
-  adminToast('Changes saved');
 }
-function adminToggleStock(id){
+async function adminToggleStock(id){
   const p=products.find(x=>x.id===id);
   if(!p)return;
   p.status=p.status==='soldout'?'available':'soldout';
   if(p.status==='available'&&Number(p.stockQty)<=0)p.stockQty=1;
   if(p.status==='soldout')p.stockQty=0;
-  saveManagedProducts();
-  renderProducts();
-  renderAdminDashboard();
+  saveManagedProducts(); renderProducts(); renderAdminDashboard();
+  try{
+    if(productsCloudReady){ await upsertProductToSupabase(p); saveManagedProducts(); renderProducts(); showLiveProductNotice((p.status==='soldout'?'Marked sold out: ':'Available again: ')+p.name); adminToast('Stock status updated online immediately.'); }
+    else adminToast('Stock status changed on this device; cloud product table is not available.');
+  }catch(err){console.error('Cloud stock update failed',err);adminToast('Stock changed locally, but cloud update failed.');}
   if(document.getElementById('productDetailModal')?.classList.contains('open') && activeDetailProductId===id) openProductDetail(id);
-  adminToast('Changes saved');
 }
-function adminRemoveProduct(id){const p=products.find(x=>x.id===id);if(!p)return;if(!confirm(`Remove ${p.name} from the shop?`))return;products=products.filter(x=>x.id!==id);saveManagedProducts();renderProducts();renderAdminDashboard();adminToast('Product removed from the shop.')}
+async function adminRemoveProduct(id){
+  const p=products.find(x=>x.id===id); if(!p)return;
+  if(!confirm(`Remove ${p.name} from the shop?`))return;
+  products=products.filter(x=>x.id!==id); saveManagedProducts(); renderProducts(); renderAdminDashboard();
+  try{
+    if(productsCloudReady){ await deleteProductFromSupabase(p); showLiveProductNotice('Product removed: '+p.name); adminToast('Product removed online immediately.'); }
+    else adminToast('Product removed on this device.');
+  }catch(err){console.error('Cloud product delete failed',err);adminToast('Product removed locally, but cloud delete failed.');}
+}
 function renderAdminOrders(){const os=getOrders(),bs=getBookings();document.getElementById('adminOrdersList').innerHTML=os.length?os.slice().reverse().map(o=>`<div class="account-row"><strong>${o.items||'Order'}</strong><span>${o.total||''}<br><small>${o.date||''} • ${o.phone||o.email||''}</small></span></div>`).join(''):'<div class="account-empty">No orders recorded yet.</div>';document.getElementById('adminBookingsList').innerHTML=bs.length?bs.slice().reverse().map(b=>`<div class="account-row"><strong>${b.service||'Service booking'}</strong><span>${b.date||''}<br><small>${b.phone||b.email||''}</small></span></div>`).join(''):'<div class="account-empty">No bookings recorded yet.</div>'}
 function loadAdminSettings(){const x=loadBusinessSettings();document.getElementById('setBusinessName').value=x.businessName||'KESY MILES TECH';document.getElementById('setLocation').value=x.location||'AMUCA TRADING CENTRE';document.getElementById('setPhone1').value=x.phone1||'+256 392-126-785';document.getElementById('setPhone2').value=x.phone2||'+256 760-619-598';document.getElementById('setEmail').value=x.email||'newtonisaac.oj.ac@gmail.com';document.getElementById('setCurrency').value=x.currency||'UGX';document.getElementById('setPayments').value=x.payments||'Mobile Money, Bank Payment, Cash on Delivery';document.getElementById('setServiceNote').value=x.serviceNote||'Delivery, repairs, installations and internet installation available.'}
 function saveAdminSettings(e){e.preventDefault();saveBusinessSettingsData({businessName:setBusinessName.value,location:setLocation.value,phone1:setPhone1.value,phone2:setPhone2.value,email:setEmail.value,currency:setCurrency.value,payments:setPayments.value,serviceNote:setServiceNote.value});adminToast('Business settings saved. Refresh the public page to apply header/contact text changes.');}
@@ -1966,6 +2110,8 @@ async function restoreSupabaseSession(){
   testSupabaseConnection();
 }
 restoreSupabaseSession();
+// Start the shared product catalog after the Supabase client is ready.
+setTimeout(()=>initializeCloudProducts(),250);
 supabaseClient.auth.onAuthStateChange((event,session)=>{
   if(event==="PASSWORD_RECOVERY"){
     setTimeout(()=>document.getElementById("passwordRecoveryModal").classList.add("open"),50);
