@@ -955,8 +955,28 @@
 /* KESY MILES TECH — Supabase connection */
 const SUPABASE_URL = "https://iuzsgariufqykowstdwb.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_mxVrScrDv32DKhbMjc6zMw__-tm35Ux";
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    // Let Supabase JS automatically process the access/refresh tokens returned
+    // by the email-confirmation link.
+    detectSessionInUrl: true,
+    persistSession: true,
+    autoRefreshToken: true
+  }
+});
 window.kesySupabase = supabaseClient;
+
+// Use the current website page as the post-confirmation destination.
+// This does not change the site's visual layout or design.
+const KESY_AUTH_REDIRECT = (() => {
+  try {
+    const u = new URL(window.location.href);
+    u.hash = "";
+    return u.toString();
+  } catch(e) {
+    return window.location.href;
+  }
+})();
 
 async function testSupabaseConnection(){
   try{
@@ -1308,7 +1328,14 @@ async function signupUser(e){
   const confirm=document.getElementById("signupConfirm").value;
   if(password!==confirm){showAuthMessage("signupMessage","Passwords do not match.","error");return}
   try{
-    const {data,error}=await supabaseClient.auth.signUp({email,password,options:{data:{name,phone}}});
+    const {data,error}=await supabaseClient.auth.signUp({
+      email,
+      password,
+      options:{
+        data:{name,phone},
+        emailRedirectTo:KESY_AUTH_REDIRECT
+      }
+    });
     if(error) throw error;
     if(data.user){
       // The database trigger creates the profile row automatically after signup.
@@ -1318,7 +1345,11 @@ async function signupUser(e){
         closeAuth();
         alert("Account created successfully. Welcome, "+name+"!");
       }else{
-        showAuthMessage("signupMessage","Account created. Check your email to confirm the account, then log in.","success");
+        showAuthMessage(
+          "signupMessage",
+          "Account created. Check your email and tap the confirmation link. Supabase will verify the account automatically and return you to KESY MILES TECH.",
+          "success"
+        );
       }
     }
     e.target.reset();
@@ -1687,12 +1718,33 @@ document.getElementById('productPhotoModal').addEventListener('click',function(e
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeProductPhoto();document.querySelectorAll('.feature-modal.open').forEach(x=>x.classList.remove('open'));document.body.style.overflow=''}});
 document.querySelectorAll('.feature-modal').forEach(function(m){m.addEventListener('click',function(e){if(e.target===m)closeFeaturePanel(m.id)})});
 
+function isEmailConfirmationReturn(){
+  const hash=window.location.hash||"";
+  const query=window.location.search||"";
+  return /(^|[&#?])type=signup(&|#|$)/i.test(hash+"#") ||
+         /(^|[?&])type=signup(&|$)/i.test(query);
+}
+
 async function restoreSupabaseSession(){
   try{
+    // Supabase JS automatically consumes the tokens from the email link.
     const {data:{session}}=await supabaseClient.auth.getSession();
     if(session?.user){
       const user=await syncCurrentUserFromSession(session);
       if(user) await touchLastSeen();
+
+      if(isEmailConfirmationReturn()){
+        closeAuth();
+        setTimeout(()=>{
+          alert("Email confirmed successfully. Your KESY MILES TECH account is now verified. You can continue using the website.");
+          try{
+            const clean=new URL(window.location.href);
+            clean.hash="";
+            clean.search=clean.search.replace(/([?&])type=signup(&?)/i,(m,p1,p2)=>p1==="?"?(p2?"?":""): (p2?"&":""));
+            window.history.replaceState({},document.title,clean.toString());
+          }catch(e){}
+        },150);
+      }
     }else{
       // No Supabase session means there is no valid customer login.
       setCurrentUser(null);
@@ -1707,7 +1759,20 @@ supabaseClient.auth.onAuthStateChange((event,session)=>{
   // Only clear the customer UI for a real sign-out. Other auth events can carry a
   // temporarily unavailable/null session while Supabase restores or refreshes it.
   if(event==="SIGNED_OUT"){setCurrentUser(null);}
-  else if(session?.user){setTimeout(()=>syncCurrentUserFromSession(session),0);}
+  else if(session?.user){
+    setTimeout(async()=>{
+      await syncCurrentUserFromSession(session);
+      if(event==="SIGNED_IN" && isEmailConfirmationReturn()){
+        closeAuth();
+        alert("Email confirmed successfully. Your KESY MILES TECH account is now verified.");
+        try{
+          const clean=new URL(window.location.href);
+          clean.hash="";
+          window.history.replaceState({},document.title,clean.toString());
+        }catch(e){}
+      }
+    },0);
+  }
   setTimeout(updateManagementVisibility,50);
 });
 </script>
