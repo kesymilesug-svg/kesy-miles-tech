@@ -841,9 +841,10 @@
       <input id="oName" required placeholder="Full name" style="margin-bottom:9px">
       <input id="oPhone" required placeholder="Phone number" style="margin-bottom:9px">
       <input id="oAddress" required placeholder="Delivery location" style="margin-bottom:9px">
-      <select id="oPayment" style="margin-bottom:12px">
+      <select id="oPayment" style="margin-bottom:8px" onchange="showPaymentDetails()">
         <option>Mobile Money</option><option>Bank Payment</option><option>Cash on Delivery</option>
       </select>
+      <div id="paymentDetails" style="display:block;margin:0 0 12px;padding:12px 14px;border-radius:12px;background:#eef6fb;border:1px solid #d7e7f2;color:var(--navy);font-weight:800;font-size:14px"></div>
       <button class="btn primary" style="width:100%">Place Order via WhatsApp</button><button class="btn outline" type="button" style="width:100%;margin-top:8px" onclick="emailOrder()">Place Order by Email</button>
     </form>
   </div>
@@ -1188,10 +1189,24 @@ function openCart(){
   closeFeaturePanels();
   const searchModal=document.getElementById("searchResultsModal"); if(searchModal) searchModal.classList.remove("open");
   updateCart();
+  showPaymentDetails();
   const user=getCurrentUser();
   if(user){oName.value=user.name||"";oPhone.value=user.phone||"";}
   document.getElementById("cartModal").classList.add("open");
   document.body.style.overflow="hidden";
+}
+function showPaymentDetails(){
+  const select=document.getElementById("oPayment");
+  const box=document.getElementById("paymentDetails");
+  if(!select || !box)return;
+  const method=select.value;
+  if(method==="Mobile Money"){
+    box.innerHTML="📱 <strong>Mobile Money Merchant Number:</strong> <span style=\"font-size:18px\">64970609</span>";
+  }else if(method==="Bank Payment"){
+    box.innerHTML="🏦 <strong>Bank Account Number:</strong> <span style=\"font-size:18px\">6010053313</span>";
+  }else{
+    box.innerHTML="💵 <strong>Cash on Delivery:</strong> Pay when your order is delivered.";
+  }
 }
 function closeCart(){document.getElementById("cartModal").classList.remove("open");document.body.style.overflow=""}
 function scrollViewed(direction){
