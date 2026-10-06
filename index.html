@@ -1228,9 +1228,9 @@ function showSearchResults(value){
   summary.textContent=list.length ? `${list.length} item${list.length===1?'':'s'} found for “${value.trim()}”` : `No items found for “${value.trim()}”`;
   box.innerHTML=list.length ? list.map(p=>`
     <div class="search-result">
-      <img src="${p.img}" alt="${p.name}" onclick="openProductPhoto(${p.id})">
+      <img src="${p.img}" alt="${p.name}" onclick="openProductPhoto(${JSON.stringify(p.id)})">
       <div><h4>${p.name}</h4><div class="meta">${p.cat}</div><span class="available" style="${p.status==='soldout'?'background:#fff0f0;color:#a12626':''}">${p.status==='soldout'?'✕ Sold Out':'✓ Available now'}</span></div>
-      <div class="result-actions"><div class="result-price">${money(p.price)}</div>${p.status==='soldout'?'<button class="btn outline" disabled>Sold Out</button>':`<button class="btn primary" onclick="addToCart(${p.id})">Add to Cart</button>`}</div>
+      <div class="result-actions"><div class="result-price">${money(p.price)}</div>${p.status==='soldout'?'<button class="btn outline" disabled>Sold Out</button>':`<button class="btn primary" onclick="addToCart(${JSON.stringify(p.id)})">Add to Cart</button>`}</div>
     </div>`).join('') : '<div class="search-empty"><strong>No matching product available</strong><span>Try another product name or category.</span></div>';
   document.getElementById('searchResultsModal').classList.add('open');
   document.body.style.overflow='hidden';
@@ -1247,11 +1247,11 @@ function renderProducts(){
   const list = products.filter(p => (cat==="All" || p.cat===cat) && [p.name,p.cat,p.description,p.storage,p.battery,p.processor,p.ram,p.other].join(" ").toLowerCase().includes(q));
   document.getElementById("productGrid").innerHTML = list.map(p => `
     <article class="card ${p.status==='soldout'?'sold-out-card':''}">
-      <button class="product-image-btn" type="button" onclick="openProductDetail(${p.id})" aria-label="View product details for ${p.name}">
+      <button class="product-image-btn" type="button" onclick="openProductDetail(${JSON.stringify(p.id)})" aria-label="View product details for ${p.name}">
         <img class="product-img" src="${p.img}" alt="${p.name}" loading="lazy">
       </button>
       <div class="card-body">
-        <span class="tag">${p.cat}</span><h3 class="product-title-link" onclick="openProductDetail(${p.id})">${p.name}</h3>
+        <span class="tag">${p.cat}</span><h3 class="product-title-link" onclick="openProductDetail(${JSON.stringify(p.id)})">${p.name}</h3>
         <div class="price">${money(p.price)}</div>
         ${p.status==='soldout'||Number(p.stockQty)<=0?'<button class="btn outline" disabled style="color:#a12626">Sold Out</button>':'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn outline" type="button" onclick="openProductDetail('+p.id+')">View Details</button><button class="btn primary" onclick="addToCart('+p.id+')">Add to Cart</button></div>'}
       </div>
@@ -1260,7 +1260,7 @@ function renderProducts(){
 let activeDetailProductId=null, activeDetailPhotoIndex=0;
 function getProductPhotos(p){const arr=Array.isArray(p.photos)?p.photos.filter(Boolean):[];if(!arr.length&&p.img)arr.push(p.img);return arr.slice(0,4)}
 function openProductDetail(id){
-  const p=products.find(x=>x.id===id); if(!p)return; recordViewed(p.id); activeDetailProductId=id; activeDetailPhotoIndex=0;
+  const p=products.find(x=>String(x.id)===String(id)); if(!p)return; recordViewed(p.id); activeDetailProductId=id; activeDetailPhotoIndex=0;
   const photos=getProductPhotos(p); const main=photos[0]||p.img;
   document.getElementById('detailMainImage').src=main; document.getElementById('detailMainImage').alt=p.name;
   document.getElementById('detailProductName').textContent=p.name; document.getElementById('detailProductCategory').textContent=p.cat; document.getElementById('detailProductPrice').textContent=money(p.price);
@@ -1305,7 +1305,7 @@ function updateCart(){
   const empty=!cart.length;
   document.getElementById("cartItems").innerHTML=empty ? '' : cart.map(p=>`
     <div class="cart-row"><div><strong>${p.name}</strong><br><small>${p.qty} × ${money(p.price)}</small></div>
-    <button class="btn outline" onclick="removeCart(${p.id})">Remove</button></div>`).join("");
+    <button class="btn outline" onclick="removeCart(${JSON.stringify(p.id)})">Remove</button></div>`).join("");
   document.getElementById("cartEmptyPrompt").style.display=empty?"block":"none";
   document.getElementById("cartTotal").textContent=money(cart.reduce((s,p)=>s+p.price*p.qty,0));
   document.getElementById("bottomCartCount").textContent=count;
@@ -1700,7 +1700,7 @@ function recordViewed(id){const ids=getViewed().filter(x=>x!==id);ids.unshift(id
 function renderCurrentlyViewed(targetId){
   const el=document.getElementById(targetId); if(!el)return;
   const items=getViewed().map(id=>products.find(p=>p.id===id)).filter(Boolean).slice(0,8);
-  el.innerHTML=items.length?items.map(p=>`<div class="viewed-card" onclick="openProductDetail(${p.id})"><img src="${p.img}" alt="${p.name}"><strong>${p.name}</strong><small>${money(p.price)}</small></div>`).join(""):'<div class="account-empty" style="min-width:100%">Products you view will appear here.</div>';
+  el.innerHTML=items.length?items.map(p=>`<div class="viewed-card" onclick="openProductDetail(${JSON.stringify(p.id)})"><img src="${p.img}" alt="${p.name}"><strong>${p.name}</strong><small>${money(p.price)}</small></div>`).join(""):'<div class="account-empty" style="min-width:100%">Products you view will appear here.</div>';
 }
 function openFeaturePanel(id){closeFeaturePanels();document.getElementById(id).classList.add("open");document.body.style.overflow="hidden"}
 function closeFeaturePanel(id){document.getElementById(id).classList.remove("open");document.body.style.overflow=""}
@@ -1975,9 +1975,9 @@ function adminToast(t="Changes saved"){
   window.__kesyAdminToastTimer=setTimeout(()=>x.classList.remove("show"),2200);
 }
 function renderAdminDashboard(){document.getElementById("adminTotalProducts").textContent=products.length;document.getElementById("adminAvailableProducts").textContent=products.filter(p=>p.status!=="soldout").length;document.getElementById("adminSoldProducts").textContent=products.filter(p=>p.status==="soldout").length;document.getElementById("adminOrderCount").textContent=getOrders().length;renderAdminProducts();renderAdminOrders();loadAdminSettings();loadManagerCustomers()}
-function renderAdminProducts(){const box=document.getElementById("adminProductList");if(!box)return;box.innerHTML=products.length?products.map(p=>{const photos=getProductPhotos(p);return `<div class="admin-product"><img src="${photos[0]||p.img}" alt="${p.name}" onclick="openAdminProductPhoto(${p.id})" style="cursor:zoom-in"><div><h4>${p.name}</h4><div class="meta">${p.cat} • ${money(p.price)} • <b>${p.status==='soldout'?'SOLD OUT':'AVAILABLE'}</b><br>${photos.length} photo(s) • Stock: ${Number(p.stockQty)||0} • ${p.storage||'No storage spec'} • ${p.battery||'No battery spec'}</div></div><div class="admin-product-actions"><button onclick="adminEditProduct(${p.id})">✏️ Edit</button><button class="${p.status==='soldout'?'success':''}" onclick="adminToggleStock(${p.id})">${p.status==='soldout'?'✓ Mark Available':'⛔ Mark Sold Out'}</button><button class="danger" onclick="adminRemoveProduct(${p.id})">🗑 Remove</button></div></div>`}).join(''):'<div class="account-empty">No products in the shop.</div>'}
-function openAdminProductPhoto(id){const p=products.find(x=>x.id===id);if(!p)return;activeDetailProductId=id;activeDetailPhotoIndex=0;openSelectedProductPhoto()}
-function adminEditProduct(id){const p=products.find(x=>x.id===id);if(!p)return;normalizeProductData();document.getElementById('editProductId').value=id;document.getElementById('editProductName').value=p.name;document.getElementById('editProductCat').value=p.cat;document.getElementById('editProductPrice').value=p.price;document.getElementById('editProductStatus').value=p.status||'available';document.getElementById('editProductStock').value=Number(p.stockQty)||0;document.getElementById('editProductDescription').value=p.description||'';document.getElementById('editProductStorage').value=p.storage||'';document.getElementById('editProductBattery').value=p.battery||'';document.getElementById('editProductProcessor').value=p.processor||'';document.getElementById('editProductRam').value=p.ram||'';document.getElementById('editProductOther').value=p.other||'';const photos=getProductPhotos(p);for(let i=1;i<=4;i++){const pr=document.getElementById('editProductPreview'+i),src=photos[i-1]||'';pr.src=src;pr.style.display=src?'block':'none';document.getElementById('editProductImage'+i).value=''}document.getElementById('adminEditProductModal').classList.add('open')}
+function renderAdminProducts(){const box=document.getElementById("adminProductList");if(!box)return;box.innerHTML=products.length?products.map(p=>{const photos=getProductPhotos(p);return `<div class="admin-product"><img src="${photos[0]||p.img}" alt="${p.name}" onclick="openAdminProductPhoto(${JSON.stringify(p.id)})" style="cursor:zoom-in"><div><h4>${p.name}</h4><div class="meta">${p.cat} • ${money(p.price)} • <b>${p.status==='soldout'?'SOLD OUT':'AVAILABLE'}</b><br>${photos.length} photo(s) • Stock: ${Number(p.stockQty)||0} • ${p.storage||'No storage spec'} • ${p.battery||'No battery spec'}</div></div><div class="admin-product-actions"><button onclick="adminEditProduct(${JSON.stringify(p.id)})">✏️ Edit</button><button class="${p.status==='soldout'?'success':''}" onclick="adminToggleStock(${JSON.stringify(p.id)})">${p.status==='soldout'?'✓ Mark Available':'⛔ Mark Sold Out'}</button><button class="danger" onclick="adminRemoveProduct(${JSON.stringify(p.id)})">🗑 Remove</button></div></div>`}).join(''):'<div class="account-empty">No products in the shop.</div>'}
+function openAdminProductPhoto(id){const p=products.find(x=>String(x.id)===String(id));if(!p)return;activeDetailProductId=id;activeDetailPhotoIndex=0;openSelectedProductPhoto()}
+function adminEditProduct(id){const p=products.find(x=>String(x.id)===String(id));if(!p)return;normalizeProductData();document.getElementById('editProductId').value=id;document.getElementById('editProductName').value=p.name;document.getElementById('editProductCat').value=p.cat;document.getElementById('editProductPrice').value=p.price;document.getElementById('editProductStatus').value=p.status||'available';document.getElementById('editProductStock').value=Number(p.stockQty)||0;document.getElementById('editProductDescription').value=p.description||'';document.getElementById('editProductStorage').value=p.storage||'';document.getElementById('editProductBattery').value=p.battery||'';document.getElementById('editProductProcessor').value=p.processor||'';document.getElementById('editProductRam').value=p.ram||'';document.getElementById('editProductOther').value=p.other||'';const photos=getProductPhotos(p);for(let i=1;i<=4;i++){const pr=document.getElementById('editProductPreview'+i),src=photos[i-1]||'';pr.src=src;pr.style.display=src?'block':'none';document.getElementById('editProductImage'+i).value=''}document.getElementById('adminEditProductModal').classList.add('open')}
 function closeAdminEdit(){document.getElementById('adminEditProductModal').classList.remove('open')}
 function previewAdminImage(input,target){const f=input.files&&input.files[0];if(!f)return;const img=document.getElementById(target);img.src=URL.createObjectURL(f);img.style.display='block'}
 function compressAdminImage(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=e=>{const im=new Image();im.onload=()=>{const max=1000,scale=Math.min(1,max/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*scale);c.height=Math.round(im.height*scale);c.getContext('2d').drawImage(im,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.82))};im.onerror=reject;im.src=e.target.result};r.onerror=reject;r.readAsDataURL(file)})}
@@ -2006,7 +2006,7 @@ async function adminAddProduct(e){
 }
 async function adminSaveProduct(e){
   e.preventDefault();
-  const id=Number(document.getElementById('editProductId').value),p=products.find(x=>x.id===id);
+  const id=document.getElementById('editProductId').value; const p=products.find(x=>String(x.id)===String(id)||String(x.supabase_id||'')===String(id));
   if(!p)return;
   const existing=getProductPhotos(p),photos=[];
   for(let i=1;i<=4;i++){
@@ -2030,7 +2030,7 @@ async function adminSaveProduct(e){
   saveManagedProducts();
   renderProducts();
   renderAdminDashboard();
-  if(document.getElementById('productDetailModal')?.classList.contains('open') && activeDetailProductId===id) openProductDetail(id);
+  if(document.getElementById('productDetailModal')?.classList.contains('open') && String(activeDetailProductId)===String(id)) openProductDetail(id);
   try{
     if(productsCloudReady){ await upsertProductToSupabase(p); saveManagedProducts(); renderProducts(); showLiveProductNotice("Product updated: "+p.name); adminToast('Changes saved and published online.'); }
     else adminToast('Changes saved on this device; cloud product table is not available.');
@@ -2048,12 +2048,12 @@ async function adminToggleStock(id){
     if(productsCloudReady){ await upsertProductToSupabase(p); saveManagedProducts(); renderProducts(); showLiveProductNotice((p.status==='soldout'?'Marked sold out: ':'Available again: ')+p.name); adminToast('Stock status updated online immediately.'); }
     else adminToast('Stock status changed on this device; cloud product table is not available.');
   }catch(err){console.error('Cloud stock update failed',err);adminToast('Stock changed locally, but cloud update failed.');}
-  if(document.getElementById('productDetailModal')?.classList.contains('open') && activeDetailProductId===id) openProductDetail(id);
+  if(document.getElementById('productDetailModal')?.classList.contains('open') && String(activeDetailProductId)===String(id)) openProductDetail(id);
 }
 async function adminRemoveProduct(id){
-  const p=products.find(x=>x.id===id); if(!p)return;
+  const p=products.find(x=>String(x.id)===String(id)); if(!p)return;
   if(!confirm(`Remove ${p.name} from the shop?`))return;
-  products=products.filter(x=>x.id!==id); saveManagedProducts(); renderProducts(); renderAdminDashboard();
+  products=products.filter(x=>String(x.id)!==String(id)); saveManagedProducts(); renderProducts(); renderAdminDashboard();
   try{
     if(productsCloudReady){ await deleteProductFromSupabase(p); showLiveProductNotice('Product removed: '+p.name); adminToast('Product removed online immediately.'); }
     else adminToast('Product removed on this device.');
