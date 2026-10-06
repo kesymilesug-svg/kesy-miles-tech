@@ -1012,11 +1012,30 @@ let products = [
 ];
 function loadManagedProducts(){try{const saved=JSON.parse(localStorage.getItem("kesyMilesProducts")||"null");if(Array.isArray(saved)&&saved.length)products=saved;}catch(e){}}
 function normalizeProductData(){products=products.map(p=>{if(!Array.isArray(p.photos)||!p.photos.length)p.photos=p.img?[p.img]:[];p.photos=p.photos.slice(0,4);if(!p.img&&p.photos[0])p.img=p.photos[0];p.description=p.description||'';p.storage=p.storage||'';p.battery=p.battery||'';p.processor=p.processor||'';p.ram=p.ram||'';p.other=p.other||'';p.stockQty=Number.isFinite(Number(p.stockQty))?Math.max(0,Number(p.stockQty)):(p.status==='soldout'?0:1);if(p.stockQty===0)p.status='soldout';else if(p.status!=='soldout')p.status='available';return p})}
-function saveManagedProducts(){normalizeProductData();localStorage.setItem("kesyMilesProducts",JSON.stringify(products));}
+function saveManagedProducts(){
+  normalizeProductData();
+  localStorage.setItem("kesyMilesProducts",JSON.stringify(products));
+  try{window.dispatchEvent(new CustomEvent("kesy-products-updated"));}catch(e){}
+}
 function loadBusinessSettings(){try{return JSON.parse(localStorage.getItem("kesyMilesSettings")||"{}")}catch(e){return {}}}
 function saveBusinessSettingsData(x){localStorage.setItem("kesyMilesSettings",JSON.stringify(x))}
 loadManagedProducts();
 normalizeProductData();
+
+function refreshProductsImmediately(){
+  try{
+    loadManagedProducts();
+    normalizeProductData();
+    renderProducts();
+    if(document.getElementById('adminModal')?.classList.contains('open')) renderAdminDashboard();
+    if(document.getElementById('productDetailModal')?.classList.contains('open') && activeDetailProductId!=null) openProductDetail(activeDetailProductId);
+  }catch(e){}
+}
+window.addEventListener('kesy-products-updated',refreshProductsImmediately);
+window.addEventListener('storage',function(e){
+  if(e.key==='kesyMilesProducts') refreshProductsImmediately();
+});
+
 let cart = [];
 let cartOwnerId = null;
 let loggedOutCartLock = true;
@@ -1824,7 +1843,14 @@ async function adminLogout(){
   try{await supabaseClient.auth.signOut();}catch(e){console.warn(e)}
 }
 function showAdminTab(name,btn){document.querySelectorAll(".admin-panel").forEach(x=>x.classList.remove("active"));document.getElementById("adminTab-"+name).classList.add("active");document.querySelectorAll(".admin-tabs button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");if(name==='customers')loadManagerCustomers();if(name==='products')renderAdminProducts();if(name==='orders')renderAdminOrders();if(name==='settings')loadAdminSettings()}
-function adminToast(t){const x=document.getElementById("adminToast");x.textContent=t;x.classList.add("show");setTimeout(()=>x.classList.remove("show"),2200)}
+function adminToast(t="Changes saved"){
+  const x=document.getElementById("adminToast");
+  if(!x)return;
+  x.textContent=t;
+  x.classList.add("show");
+  clearTimeout(window.__kesyAdminToastTimer);
+  window.__kesyAdminToastTimer=setTimeout(()=>x.classList.remove("show"),2200);
+}
 function renderAdminDashboard(){document.getElementById("adminTotalProducts").textContent=products.length;document.getElementById("adminAvailableProducts").textContent=products.filter(p=>p.status!=="soldout").length;document.getElementById("adminSoldProducts").textContent=products.filter(p=>p.status==="soldout").length;document.getElementById("adminOrderCount").textContent=getOrders().length;renderAdminProducts();renderAdminOrders();loadAdminSettings();loadManagerCustomers()}
 function renderAdminProducts(){const box=document.getElementById("adminProductList");if(!box)return;box.innerHTML=products.length?products.map(p=>{const photos=getProductPhotos(p);return `<div class="admin-product"><img src="${photos[0]||p.img}" alt="${p.name}" onclick="openAdminProductPhoto(${p.id})" style="cursor:zoom-in"><div><h4>${p.name}</h4><div class="meta">${p.cat} • ${money(p.price)} • <b>${p.status==='soldout'?'SOLD OUT':'AVAILABLE'}</b><br>${photos.length} photo(s) • Stock: ${Number(p.stockQty)||0} • ${p.storage||'No storage spec'} • ${p.battery||'No battery spec'}</div></div><div class="admin-product-actions"><button onclick="adminEditProduct(${p.id})">✏️ Edit</button><button class="${p.status==='soldout'?'success':''}" onclick="adminToggleStock(${p.id})">${p.status==='soldout'?'✓ Mark Available':'⛔ Mark Sold Out'}</button><button class="danger" onclick="adminRemoveProduct(${p.id})">🗑 Remove</button></div></div>`}).join(''):'<div class="account-empty">No products in the shop.</div>'}
 function openAdminProductPhoto(id){const p=products.find(x=>x.id===id);if(!p)return;activeDetailProductId=id;activeDetailPhotoIndex=0;openSelectedProductPhoto()}
@@ -1833,8 +1859,48 @@ function closeAdminEdit(){document.getElementById('adminEditProductModal').class
 function previewAdminImage(input,target){const f=input.files&&input.files[0];if(!f)return;const img=document.getElementById(target);img.src=URL.createObjectURL(f);img.style.display='block'}
 function compressAdminImage(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=e=>{const im=new Image();im.onload=()=>{const max=1000,scale=Math.min(1,max/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*scale);c.height=Math.round(im.height*scale);c.getContext('2d').drawImage(im,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.82))};im.onerror=reject;im.src=e.target.result};r.onerror=reject;r.readAsDataURL(file)})}
 async function adminAddProduct(e){e.preventDefault();const photos=[];for(let i=1;i<=4;i++){const f=document.getElementById('newProductImage'+i).files[0];if(f)photos.push(await compressAdminImage(f))}if(!photos.length)photos.push('https://images.unsplash.com/photo-1560472354-b33ff0c44a43?auto=format&fit=crop&w=700&q=80');const p={id:Date.now(),name:document.getElementById('newProductName').value.trim(),cat:document.getElementById('newProductCat').value.trim(),price:Number(document.getElementById('newProductPrice').value),stockQty:Math.max(0,Number(document.getElementById('newProductStock').value)||0),img:photos[0],photos,status:Number(document.getElementById('newProductStock').value)>0?'available':'soldout',description:document.getElementById('newProductDescription').value.trim(),storage:document.getElementById('newProductStorage').value.trim(),battery:document.getElementById('newProductBattery').value.trim(),processor:document.getElementById('newProductProcessor').value.trim(),ram:document.getElementById('newProductRam').value.trim(),other:document.getElementById('newProductOther').value.trim()};products.push(p);saveManagedProducts();renderProducts();renderAdminDashboard();e.target.reset();for(let i=1;i<=4;i++)document.getElementById('newProductPreview'+i).style.display='none';adminToast('Product added successfully with '+photos.length+' photo(s).')}
-async function adminSaveProduct(e){e.preventDefault();const id=Number(document.getElementById('editProductId').value),p=products.find(x=>x.id===id);if(!p)return;const existing=getProductPhotos(p),photos=[];for(let i=1;i<=4;i++){const f=document.getElementById('editProductImage'+i).files[0];if(f)photos.push(await compressAdminImage(f));else if(existing[i-1])photos.push(existing[i-1])}p.name=document.getElementById('editProductName').value.trim();p.cat=document.getElementById('editProductCat').value.trim();p.price=Number(document.getElementById('editProductPrice').value);p.stockQty=Math.max(0,Number(document.getElementById('editProductStock').value)||0);p.status=p.stockQty===0?'soldout':document.getElementById('editProductStatus').value;p.description=document.getElementById('editProductDescription').value.trim();p.storage=document.getElementById('editProductStorage').value.trim();p.battery=document.getElementById('editProductBattery').value.trim();p.processor=document.getElementById('editProductProcessor').value.trim();p.ram=document.getElementById('editProductRam').value.trim();p.other=document.getElementById('editProductOther').value.trim();p.photos=photos.length?photos:[p.img];p.img=p.photos[0];saveManagedProducts();renderProducts();closeAdminEdit();renderAdminDashboard();adminToast('Product changes saved.')}
-function adminToggleStock(id){const p=products.find(x=>x.id===id);if(!p)return;p.status=p.status==='soldout'?'available':'soldout';if(p.status==='available'&&Number(p.stockQty)<=0)p.stockQty=1;if(p.status==='soldout')p.stockQty=0;saveManagedProducts();renderProducts();renderAdminDashboard();adminToast(p.status==='soldout'?'Product marked sold out.':'Product marked available.')}
+async function adminSaveProduct(e){
+  e.preventDefault();
+  const id=Number(document.getElementById('editProductId').value),p=products.find(x=>x.id===id);
+  if(!p)return;
+  const existing=getProductPhotos(p),photos=[];
+  for(let i=1;i<=4;i++){
+    const f=document.getElementById('editProductImage'+i).files[0];
+    if(f)photos.push(await compressAdminImage(f));
+    else if(existing[i-1])photos.push(existing[i-1]);
+  }
+  p.name=document.getElementById('editProductName').value.trim();
+  p.cat=document.getElementById('editProductCat').value.trim();
+  p.price=Number(document.getElementById('editProductPrice').value);
+  p.stockQty=Math.max(0,Number(document.getElementById('editProductStock').value)||0);
+  p.status=p.stockQty===0?'soldout':document.getElementById('editProductStatus').value;
+  p.description=document.getElementById('editProductDescription').value.trim();
+  p.storage=document.getElementById('editProductStorage').value.trim();
+  p.battery=document.getElementById('editProductBattery').value.trim();
+  p.processor=document.getElementById('editProductProcessor').value.trim();
+  p.ram=document.getElementById('editProductRam').value.trim();
+  p.other=document.getElementById('editProductOther').value.trim();
+  p.photos=photos.length?photos:[p.img];
+  p.img=p.photos[0];
+  saveManagedProducts();
+  renderProducts();
+  renderAdminDashboard();
+  if(document.getElementById('productDetailModal')?.classList.contains('open') && activeDetailProductId===id) openProductDetail(id);
+  closeAdminEdit();
+  adminToast('Changes saved');
+}
+function adminToggleStock(id){
+  const p=products.find(x=>x.id===id);
+  if(!p)return;
+  p.status=p.status==='soldout'?'available':'soldout';
+  if(p.status==='available'&&Number(p.stockQty)<=0)p.stockQty=1;
+  if(p.status==='soldout')p.stockQty=0;
+  saveManagedProducts();
+  renderProducts();
+  renderAdminDashboard();
+  if(document.getElementById('productDetailModal')?.classList.contains('open') && activeDetailProductId===id) openProductDetail(id);
+  adminToast('Changes saved');
+}
 function adminRemoveProduct(id){const p=products.find(x=>x.id===id);if(!p)return;if(!confirm(`Remove ${p.name} from the shop?`))return;products=products.filter(x=>x.id!==id);saveManagedProducts();renderProducts();renderAdminDashboard();adminToast('Product removed from the shop.')}
 function renderAdminOrders(){const os=getOrders(),bs=getBookings();document.getElementById('adminOrdersList').innerHTML=os.length?os.slice().reverse().map(o=>`<div class="account-row"><strong>${o.items||'Order'}</strong><span>${o.total||''}<br><small>${o.date||''} • ${o.phone||o.email||''}</small></span></div>`).join(''):'<div class="account-empty">No orders recorded yet.</div>';document.getElementById('adminBookingsList').innerHTML=bs.length?bs.slice().reverse().map(b=>`<div class="account-row"><strong>${b.service||'Service booking'}</strong><span>${b.date||''}<br><small>${b.phone||b.email||''}</small></span></div>`).join(''):'<div class="account-empty">No bookings recorded yet.</div>'}
 function loadAdminSettings(){const x=loadBusinessSettings();document.getElementById('setBusinessName').value=x.businessName||'KESY MILES TECH';document.getElementById('setLocation').value=x.location||'AMUCA TRADING CENTRE';document.getElementById('setPhone1').value=x.phone1||'+256 392-126-785';document.getElementById('setPhone2').value=x.phone2||'+256 760-619-598';document.getElementById('setEmail').value=x.email||'newtonisaac.oj.ac@gmail.com';document.getElementById('setCurrency').value=x.currency||'UGX';document.getElementById('setPayments').value=x.payments||'Mobile Money, Bank Payment, Cash on Delivery';document.getElementById('setServiceNote').value=x.serviceNote||'Delivery, repairs, installations and internet installation available.'}
