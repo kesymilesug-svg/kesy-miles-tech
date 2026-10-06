@@ -1147,7 +1147,8 @@ function openProductDetail(id){
   document.getElementById('productDetailModal').classList.add('open'); document.body.style.overflow='hidden';
 }
 function buyNowProduct(id){const p=products.find(x=>x.id===id);if(!p||p.status==='soldout'||Number(p.stockQty)<=0){alert("This product is currently sold out.");return}cart=[{...p,qty:1}];updateCart();closeProductDetail();openCart();}
-function whatsappProductOrder(id){const p=products.find(x=>x.id===id);if(!p||p.status==='soldout'||Number(p.stockQty)<=0){alert("This product is currently sold out.");return}const specs=[p.storage,p.battery,p.processor,p.ram,p.other].filter(Boolean).join("; ");const msg=`Hello KESY MILES TECH, I want to order:%0A%0AProduct: ${encodeURIComponent(p.name)}%0APrice: ${encodeURIComponent(money(p.price))}%0A${specs?`Specifications: ${encodeURIComponent(specs)}%0A`:``}Please confirm availability and delivery.`;window.open("https://wa.me/256760619598?text="+msg,"_blank");}
+function requireCustomerForOrder(){const user=getCurrentUser();if(user)return true;alert("Please sign in or create a customer account before sending an order. Your order and cart are linked to your account.");openAccountLogin();return false;}
+function whatsappProductOrder(id){const p=products.find(x=>x.id===id);if(!p||p.status==='soldout'||Number(p.stockQty)<=0){alert("This product is currently sold out.");return}if(!requireCustomerForOrder())return;const specs=[p.storage,p.battery,p.processor,p.ram,p.other].filter(Boolean).join("; ");const msg=`Hello KESY MILES TECH, I want to order:%0A%0AProduct: ${encodeURIComponent(p.name)}%0APrice: ${encodeURIComponent(money(p.price))}%0A${specs?`Specifications: ${encodeURIComponent(specs)}%0A`:``}Please confirm availability and delivery.`;window.open("https://wa.me/256760619598?text="+msg,"_blank");}
 function selectDetailPhoto(index){const p=products.find(x=>x.id===activeDetailProductId);if(!p)return;const photos=getProductPhotos(p);if(!photos[index])return;activeDetailPhotoIndex=index;document.getElementById('detailMainImage').src=photos[index];document.querySelectorAll('.detail-thumb').forEach((x,i)=>x.classList.toggle('active',i===index))}
 function openSelectedProductPhoto(){const p=products.find(x=>x.id===activeDetailProductId);if(!p)return;const photos=getProductPhotos(p);const src=photos[activeDetailPhotoIndex]||photos[0]||p.img;document.getElementById('photoModalImage').src=src;document.getElementById('photoModalImage').alt=p.name;document.getElementById('photoModalName').textContent=p.name;document.getElementById('photoModalCategory').textContent=p.cat;document.getElementById('photoModalPrice').textContent=money(p.price);document.getElementById('photoModalAdd').style.display='none';document.getElementById('productPhotoModal').classList.add('open');}
 function closeProductDetail(){document.getElementById('productDetailModal').classList.remove('open');document.body.style.overflow=''}
@@ -1208,7 +1209,7 @@ async function getOrderPhotoLink(p,orderToken,index){
     const ext=(blob.type||"image/jpeg").split("/")[1]||"jpg";
     const safeName=String(p.name||"product").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,50)||"product";
     const path=`orders/${orderToken}/${index}-${safeName}.${ext}`;
-    const {error}=await supabaseClient.storage.from("product-images").upload(path,blob,{contentType:blob.type||"image/jpeg",upsert:true});
+    const {error}=await supabaseClient.storage.from("product-images").upload(path,blob,{contentType:blob.type||"image/jpeg",upsert:false});
     if(error)throw error;
     const {data}=supabaseClient.storage.from("product-images").getPublicUrl(path);
     return data?.publicUrl||"";
@@ -1228,6 +1229,7 @@ async function buildOrderPhotoLines(){
   return lines.join("\n");
 }
 async function emailOrder(){
+  if(!requireCustomerForOrder())return;
   if(!cart.length){alert("Your cart is empty.");return}
   const photoLines=await buildOrderPhotoLines();
   const items=cart.map(p=>`${p.name} x${p.qty}`).join(", ");
@@ -1238,6 +1240,7 @@ async function emailOrder(){
 }
 async function checkout(e){
   e.preventDefault();
+  if(!requireCustomerForOrder())return;
   if(!cart.length){alert("Your cart is empty.");return}
   const photoLines=await buildOrderPhotoLines();
   const items=cart.map(p=>`${p.name} x${p.qty}`).join(", ");
