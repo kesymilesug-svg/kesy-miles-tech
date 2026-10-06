@@ -897,16 +897,30 @@
       <h2 style="font-size:30px">🔐 Management Sign-in</h2>
       <p>Private administration area for KESY MILES TECH.</p>
     </div>
-    <div class="admin-security-note">Management sign-in uses your secure Supabase manager account. Use the same manager email and password you use for the KESY MILES TECH management account.</div>
+    <div class="admin-security-note">Security protection includes a separate admin session, password hashing, automatic lockout after repeated failed attempts, and an inactivity timeout.</div>
     <form onsubmit="adminLogin(event)" style="padding:0;box-shadow:none">
-      <label>Manager Email</label>
-      <input id="adminEmail" type="email" autocomplete="username" required value="newtonisaac.oj.ac@gmail.com" placeholder="Enter manager email" style="margin-bottom:12px">
-      <label>Manager Password</label>
-      <div class="password-wrap" style="margin-bottom:12px"><input id="adminPassword" type="password" autocomplete="current-password" required placeholder="Enter Supabase account password"><button class="password-toggle" type="button" onclick="togglePassword('adminPassword',this)">👁️</button></div>
+      <label>Management Password</label>
+      <div class="password-wrap" style="margin-bottom:12px"><input id="adminPassword" type="password" minlength="8" required placeholder="Enter admin password"><button class="password-toggle" type="button" onclick="togglePassword('adminPassword',this)">👁️</button></div>
       <button class="btn primary" style="width:100%" type="submit">Sign in to Management</button>
       <div class="auth-message" id="adminLoginMessage"></div>
     </form>
-    <p class="settings-note">Use the password belonging to the manager account above. This is no longer a separate browser-only management password.</p>
+    <p class="settings-note">First time? The management password is created from the setup option below. Keep your recovery code private.</p>
+    <button class="btn outline" style="width:100%;margin-top:8px" onclick="showAdminSetup()">First-time / Reset Management Security</button>
+  </div>
+</div>
+
+<div class="modal admin-modal" id="adminSetupModal">
+  <div class="modal-box admin-login-box">
+    <button class="close" onclick="closeAdminSetup()">×</button>
+    <div class="section-head" style="margin-bottom:20px"><h2 style="font-size:28px">🛡️ Management Security Setup</h2><p>Create the private management password.</p></div>
+    <div class="admin-security-note">Use at least 12 characters with uppercase, lowercase, a number and a symbol. Your password is stored as a cryptographic hash in this browser.</div>
+    <form onsubmit="saveAdminSetup(event)" style="padding:0;box-shadow:none">
+      <label>New Management Password</label><div class="password-wrap" style="margin-bottom:12px"><input id="newAdminPassword" type="password" minlength="12" required placeholder="At least 12 characters"><button class="password-toggle" type="button" onclick="togglePassword('newAdminPassword',this)">👁️</button></div>
+      <label>Confirm Password</label><div class="password-wrap" style="margin-bottom:12px"><input id="confirmAdminPassword" type="password" minlength="12" required placeholder="Repeat password"><button class="password-toggle" type="button" onclick="togglePassword('confirmAdminPassword',this)">👁️</button></div>
+      <label>Recovery Code</label><input id="adminRecoveryCode" minlength="8" required placeholder="Create a private recovery code" style="margin-bottom:12px">
+      <button class="btn primary" style="width:100%" type="submit">Save Management Security</button>
+      <div class="auth-message" id="adminSetupMessage"></div>
+    </form>
   </div>
 </div>
 
@@ -955,29 +969,8 @@
 /* KESY MILES TECH — Supabase connection */
 const SUPABASE_URL = "https://iuzsgariufqykowstdwb.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_mxVrScrDv32DKhbMjc6zMw__-tm35Ux";
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: {
-    // Let Supabase JS automatically process the access/refresh tokens returned
-    // by the email-confirmation link.
-    detectSessionInUrl: true,
-    persistSession: true,
-    autoRefreshToken: true
-  }
-});
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 window.kesySupabase = supabaseClient;
-
-// Use the current website page as the post-confirmation destination.
-// This does not change the site's visual layout or design.
-const KESY_AUTH_REDIRECT = (() => {
-  try {
-    // Always return customers to the clean website URL after verification.
-    // Do not carry Supabase auth fragments, query strings, or modal state forward.
-    const u = new URL(window.location.origin + window.location.pathname);
-    return u.toString();
-  } catch(e) {
-    return window.location.origin + window.location.pathname;
-  }
-})();
 
 async function testSupabaseConnection(){
   try{
@@ -1017,61 +1010,6 @@ function saveBusinessSettingsData(x){localStorage.setItem("kesyMilesSettings",JS
 loadManagedProducts();
 normalizeProductData();
 let cart = [];
-let cartOwnerId = null;
-let loggedOutCartLock = true;
-
-// Each customer has a completely separate cart. A logged-out visitor has no active cart.
-// The saved cart is restored only after a real customer login, and logout removes the
-// visible cart immediately so an old/guest cart can never reappear.
-function getCartStorageKey(user){
-  return user?.id ? `kesyMilesCart_${user.id}` : null;
-}
-function clearGuestAndLegacyCart(){
-  // Remove older/guest cart keys created by previous versions of the website.
-  try{
-    localStorage.removeItem("kesyMilesCart");
-    localStorage.removeItem("cart");
-    localStorage.removeItem("kesyMilesGuestCart");
-    localStorage.removeItem("kesyMilesCart_guest");
-  }catch(e){}
-}
-function saveCartForUser(user=getCurrentUser()){
-  const key=getCartStorageKey(user);
-  if(!key || !user?.id || loggedOutCartLock)return;
-  try{ localStorage.setItem(key,JSON.stringify(cart)); }catch(e){ console.warn("Could not save customer cart",e); }
-}
-function loadCartForUser(user=getCurrentUser()){
-  const key=getCartStorageKey(user);
-  if(!key || !user?.id){
-    cart=[]; cartOwnerId=null; loggedOutCartLock=true; return;
-  }
-  try{
-    const saved=JSON.parse(localStorage.getItem(key)||"[]");
-    cart=Array.isArray(saved)?saved:[];
-    cartOwnerId=user.id;
-    loggedOutCartLock=false;
-    clearGuestAndLegacyCart();
-  }catch(e){
-    cart=[]; cartOwnerId=user.id; loggedOutCartLock=false;
-    console.warn("Could not restore customer cart",e);
-  }
-}
-function clearActiveCartOnLogout(){
-  cart=[];
-  cartOwnerId=null;
-  loggedOutCartLock=true;
-  clearGuestAndLegacyCart();
-  const count=document.getElementById("cartCount");
-  if(count) count.textContent="0";
-  const items=document.getElementById("cartItems");
-  if(items) items.innerHTML="";
-  const empty=document.getElementById("cartEmptyPrompt");
-  if(empty) empty.style.display="block";
-  const total=document.getElementById("cartTotal");
-  if(total) total.textContent=money(0);
-  const modal=document.getElementById("cartModal");
-  if(modal) modal.classList.remove("open");
-}
 
 const money = n => "UGX " + Number(n).toLocaleString();
 
@@ -1165,7 +1103,6 @@ function addToCart(id){
   if(!p || p.status==="soldout" || Number(p.stockQty)<=0){alert("This product is currently sold out.");return} const existing=cart.find(x=>x.id===id);
   if(existing && existing.qty>=Number(p.stockQty)){alert("You cannot add more than the available stock.");return}
   existing ? existing.qty++ : cart.push({...p,qty:1});
-  saveCartForUser();
   updateCart(); alert(p.name+" added to cart.");
 }
 function updateCart(){
@@ -1182,7 +1119,7 @@ function updateCart(){
   renderCurrentlyViewed("cartViewedItems");
   if(getCurrentUser() && document.getElementById("accountModal").classList.contains("open")) renderAccount();
 }
-function removeCart(id){cart=cart.filter(p=>p.id!==id);saveCartForUser();updateCart()}
+function removeCart(id){cart=cart.filter(p=>p.id!==id);updateCart()}
 function openCart(){
   closeFeaturePanels();
   const searchModal=document.getElementById("searchResultsModal"); if(searchModal) searchModal.classList.remove("open");
@@ -1233,47 +1170,13 @@ function getUsers(){
   try{return JSON.parse(localStorage.getItem("kesyMilesUsers")||"[]")}catch(e){return []}
 }
 function saveUsers(users){localStorage.setItem("kesyMilesUsers",JSON.stringify(users))}
-let currentUserCache=null;
 function getCurrentUser(){
-  if(currentUserCache)return currentUserCache;
-  try{
-    const saved=JSON.parse(localStorage.getItem("kesyMilesCurrentUser")||"null");
-    if(saved) currentUserCache=saved;
-    return saved;
-  }catch(e){return null}
+  try{return JSON.parse(localStorage.getItem("kesyMilesCurrentUser")||"null")}catch(e){return null}
 }
 function setCurrentUser(user){
-  const previousUser=currentUserCache;
-  if(previousUser && previousUser.id && user?.id!==previousUser.id && !loggedOutCartLock) saveCartForUser(previousUser);
-  if(!user){
-    currentUserCache=null;
-    localStorage.removeItem("kesyMilesCurrentUser");
-    clearActiveCartOnLogout();
-    updateAuthUI();
-    return;
-  }
-  currentUserCache=user;
-  localStorage.setItem("kesyMilesCurrentUser",JSON.stringify(user));
-  loadCartForUser(user);
-  if(typeof updateCart==="function") updateCart();
+  if(user) localStorage.setItem("kesyMilesCurrentUser",JSON.stringify(user));
+  else localStorage.removeItem("kesyMilesCurrentUser");
   updateAuthUI();
-}
-async function syncCurrentUserFromSession(session){
-  if(!session?.user)return null;
-  try{
-    const u=session.user;
-    const {data:profile}=await supabaseClient.from("profiles").select("name,email,phone,account_status").eq("id",u.id).maybeSingle();
-    if(profile?.account_status==="suspended"){
-      setCurrentUser(null);
-      return null;
-    }
-    const user={id:u.id,name:profile?.name||u.user_metadata?.name||"Customer",email:u.email||profile?.email||"",phone:profile?.phone||u.user_metadata?.phone||""};
-    setCurrentUser(user);
-    return user;
-  }catch(e){
-    console.warn("Could not refresh customer profile",e);
-    return getCurrentUser();
-  }
 }
 function openAuth(mode="login"){
   document.getElementById("authModal").classList.add("open");
@@ -1296,134 +1199,56 @@ async function loginUser(e){
   e.preventDefault();
   const identifier=document.getElementById("loginIdentifier").value.trim().toLowerCase();
   const password=document.getElementById("loginPassword").value;
-  if(!identifier||!password){
-    showAuthMessage("loginMessage","Please enter your email/phone and password.","error");
-    return;
-  }
+  let email=identifier;
   try{
-    let email=identifier;
     if(!identifier.includes("@")){
       const {data:rpcEmail,error}=await supabaseClient.rpc("get_email_by_phone",{p_phone:identifier});
       if(error) throw error;
-      email=String(rpcEmail||"").trim().toLowerCase();
+      email=rpcEmail||"";
       if(!email) throw new Error("No account was found for that phone number.");
     }
     const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
-    if(error){
-      const msg=String(error.message||"");
-      if(/email.*not.*confirm|email.*confirm/i.test(msg)){
-        throw new Error("Please confirm your email address first, then log in again.");
-      }
-      throw error;
-    }
+    if(error) throw error;
     const u=data.user;
-    const {data:profile}=await supabaseClient.from("profiles")
-      .select("name,email,phone,account_status")
-      .eq("id",u.id).maybeSingle();
+    const {data:profile}=await supabaseClient.from("profiles").select("name,email,phone,account_status").eq("id",u.id).maybeSingle();
     if(profile?.account_status==="suspended"){
       await supabaseClient.auth.signOut();
       throw new Error("This account has been suspended. Please contact KESY MILES TECH.");
     }
-    setCurrentUser({
-      id:u.id,
-      name:profile?.name||u.user_metadata?.name||"Customer",
-      email:u.email,
-      phone:profile?.phone||u.user_metadata?.phone||""
-    });
+    setCurrentUser({id:u.id,name:profile?.name||u.user_metadata?.name||"Customer",email:u.email,phone:profile?.phone||u.user_metadata?.phone||""});
     await touchLastSeen();
-    closeAuth();
-    alert("Welcome back, "+(profile?.name||u.user_metadata?.name||"Customer")+"!");
+    closeAuth(); alert("Welcome back, "+(profile?.name||u.user_metadata?.name||"Customer")+"!");
   }catch(err){
     showAuthMessage("loginMessage",err.message||"Login failed. Check your details and try again.","error");
-    console.warn("KESY login:",err);
+    console.warn(err);
   }
 }
-
-function validateSignupFields(name,email,phone,password,confirm){
-  if(name.length<2) return "Please enter your full name.";
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Please enter a valid email address.";
-  if(phone.length<7) return "Please enter a valid phone number.";
-  if(password.length<8) return "Password must be at least 8 characters.";
-  if(password!==confirm) return "Passwords do not match.";
-  return "";
-}
-
 async function signupUser(e){
   e.preventDefault();
-  const form=e.target;
   const name=document.getElementById("signupName").value.trim();
   const email=document.getElementById("signupEmail").value.trim().toLowerCase();
   const phone=document.getElementById("signupPhone").value.trim();
   const password=document.getElementById("signupPassword").value;
   const confirm=document.getElementById("signupConfirm").value;
-  const validation=validateSignupFields(name,email,phone,password,confirm);
-  if(validation){
-    showAuthMessage("signupMessage",validation,"error");
-    return;
-  }
-
-  const submit=form.querySelector('button[type="submit"]');
-  if(submit){submit.disabled=true;submit.dataset.oldText=submit.textContent;submit.textContent="Creating account...";}
-
+  if(password!==confirm){showAuthMessage("signupMessage","Passwords do not match.","error");return}
   try{
-    const {data,error}=await supabaseClient.auth.signUp({
-      email,
-      password,
-      options:{
-        data:{name,phone},
-        emailRedirectTo:KESY_AUTH_REDIRECT
-      }
-    });
-
-    if(error){
-      const msg=String(error.message||"");
-      if(/rate limit|too many|email.*rate/i.test(msg)){
-        throw new Error("The Supabase email service has reached its testing limit. Your website is ready for production SMTP, but the email provider must be changed in Supabase before new verification emails can be sent.");
-      }
-      if(/already registered|already exists|user already/i.test(msg)){
-        throw new Error("An account with this email already exists. Please log in, or use Forgot Password if you cannot remember the password.");
-      }
-      throw error;
-    }
-
+    const {data,error}=await supabaseClient.auth.signUp({email,password,options:{data:{name,phone}}});
+    if(error) throw error;
     if(data.user){
+      // The database trigger creates the profile row automatically after signup.
+      // Do not write to public.profiles here; this also works when email confirmation is required.
       if(data.session){
         setCurrentUser({id:data.user.id,name,email,phone});
         closeAuth();
         alert("Account created successfully. Welcome, "+name+"!");
       }else{
-        showAuthMessage(
-          "signupMessage",
-          "Account created successfully. Please open the confirmation email and tap the confirmation link. You will be returned automatically to KESY MILES TECH.",
-          "success"
-        );
+        showAuthMessage("signupMessage","Account created. Check your email to confirm the account, then log in.","success");
       }
-      form.reset();
-    }else{
-      throw new Error("The account could not be created. Please try again.");
     }
-  }catch(err){
-    showAuthMessage("signupMessage",err.message||"Account creation failed. Please try again.","error");
-    console.warn("KESY signup:",err);
-  }finally{
-    if(submit){submit.disabled=false;submit.textContent=submit.dataset.oldText||"Create Account";}
-  }
+    e.target.reset();
+  }catch(err){showAuthMessage("signupMessage",err.message||"Account creation failed. Check your Supabase setup.","error");console.warn(err)}
 }
-
-async function logoutUser(){
-  // Save the customer's cart under that customer's own key before signing out.
-  const user=getCurrentUser();
-  if(user?.id){
-    loggedOutCartLock=false;
-    saveCartForUser(user);
-  }
-  // Lock and clear the active cart BEFORE Supabase finishes signing out. This prevents
-  // an old guest/previous-user cart from being rendered during the auth transition.
-  clearActiveCartOnLogout();
-  try{await supabaseClient.auth.signOut()}catch(e){console.warn(e)}
-  setCurrentUser(null);
-  alert("You have been logged out. Your cart has been cleared.");
-}
+async function logoutUser(){try{await supabaseClient.auth.signOut()}catch(e){console.warn(e)}setCurrentUser(null);alert("You have been logged out.")} 
 function updateAuthUI(){
   const user=getCurrentUser();
   document.getElementById("authActions").style.display=user?"none":"flex";
@@ -1692,44 +1517,25 @@ function escapeHtml(value){
   return String(value??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 }
 
-const ADMIN_KEYS={session:"kesyMilesAdminSession",fails:"kesyMilesAdminFails",lock:"kesyMilesAdminLock"};
+const ADMIN_KEYS={hash:"kesyMilesAdminHash",recovery:"kesyMilesAdminRecovery",session:"kesyMilesAdminSession",fails:"kesyMilesAdminFails",lock:"kesyMilesAdminLock"};
+async function sha256(text){const data=new TextEncoder().encode(text);const hash=await crypto.subtle.digest("SHA-256",data);return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,"0")).join("")}
+function adminConfigured(){return !!localStorage.getItem(ADMIN_KEYS.hash)}
 function adminSessionValid(){const x=Number(localStorage.getItem(ADMIN_KEYS.session)||0);return x>Date.now()}
 async function openAdminLogin(){
-  if(adminSessionValid() && await isManagerSignedIn()){openAdminDashboard();return}
-  const email=document.getElementById("adminEmail");
-  if(email) email.value=MANAGER_EMAIL;
+  if(!(await isManagerSignedIn())){
+    alert("Management access is available only to the manager account: "+MANAGER_EMAIL);
+    await updateManagementVisibility();
+    return;
+  }
+  if(adminSessionValid()){openAdminDashboard();return}
   document.getElementById("adminLoginModal").classList.add("open");
   document.getElementById("adminPassword").focus();
 }
 function closeAdminLogin(){document.getElementById("adminLoginModal").classList.remove("open")}
-async function adminLogin(e){
-  e.preventDefault();
-  const email=(document.getElementById("adminEmail").value||"").trim().toLowerCase();
-  const password=document.getElementById("adminPassword").value;
-  if(email!==MANAGER_EMAIL){showAuthMessage("adminLoginMessage","This email is not the authorized KESY MILES TECH manager email.","error");return}
-  const lock=Number(localStorage.getItem(ADMIN_KEYS.lock)||0);
-  if(lock>Date.now()){showAuthMessage("adminLoginMessage","Management access is temporarily locked. Try again later.","error");return}
-  try{
-    const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
-    if(error) throw error;
-    const user=data?.user;
-    if(!user || String(user.email||"").trim().toLowerCase()!==MANAGER_EMAIL){
-      await supabaseClient.auth.signOut();
-      throw new Error("This Supabase account is not the authorized manager account.");
-    }
-    localStorage.removeItem(ADMIN_KEYS.fails);
-    localStorage.removeItem(ADMIN_KEYS.lock);
-    localStorage.setItem(ADMIN_KEYS.session,Date.now()+30*60*1000);
-    await updateManagementVisibility();
-    closeAdminLogin();
-    openAdminDashboard();
-  }catch(err){
-    let f=Number(localStorage.getItem(ADMIN_KEYS.fails)||0)+1;
-    localStorage.setItem(ADMIN_KEYS.fails,f);
-    if(f>=5){localStorage.setItem(ADMIN_KEYS.lock,Date.now()+5*60*1000);localStorage.removeItem(ADMIN_KEYS.fails);showAuthMessage("adminLoginMessage","Too many failed attempts. Management is locked for 5 minutes.","error");}
-    else showAuthMessage("adminLoginMessage",err.message||`Manager sign-in failed. ${5-f} attempt(s) remaining.`,"error");
-  }
-}
+function showAdminSetup(){closeAdminLogin();document.getElementById("adminSetupModal").classList.add("open")}
+function closeAdminSetup(){document.getElementById("adminSetupModal").classList.remove("open")}
+async function saveAdminSetup(e){e.preventDefault();const p=document.getElementById("newAdminPassword").value,r=document.getElementById("adminRecoveryCode").value.trim();const msg=document.getElementById("adminSetupMessage");if(!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}/.test(p)){msg.textContent="Use 12+ characters including uppercase, lowercase, number and symbol.";msg.className="auth-message show error";return}if(p!==document.getElementById("confirmAdminPassword").value){msg.textContent="Passwords do not match.";msg.className="auth-message show error";return}localStorage.setItem(ADMIN_KEYS.hash,await sha256(p));localStorage.setItem(ADMIN_KEYS.recovery,await sha256(r));localStorage.removeItem(ADMIN_KEYS.fails);localStorage.removeItem(ADMIN_KEYS.lock);msg.textContent="Management security saved. Keep your recovery code private.";msg.className="auth-message show success";setTimeout(()=>{closeAdminSetup();openAdminLogin()},700)}
+async function adminLogin(e){e.preventDefault();if(!adminConfigured()){showAdminSetup();return}const lock=Number(localStorage.getItem(ADMIN_KEYS.lock)||0);if(lock>Date.now()){showAuthMessage("adminLoginMessage","Management access is temporarily locked. Try again later.","error");return}const p=document.getElementById("adminPassword").value;const ok=(await sha256(p))===localStorage.getItem(ADMIN_KEYS.hash);if(!ok){let f=Number(localStorage.getItem(ADMIN_KEYS.fails)||0)+1;localStorage.setItem(ADMIN_KEYS.fails,f);if(f>=5){localStorage.setItem(ADMIN_KEYS.lock,Date.now()+5*60*1000);localStorage.removeItem(ADMIN_KEYS.fails);showAuthMessage("adminLoginMessage","Too many failed attempts. Management is locked for 5 minutes.","error")}else showAuthMessage("adminLoginMessage",`Incorrect management password. ${5-f} attempt(s) remaining.`,"error");return}localStorage.removeItem(ADMIN_KEYS.fails);localStorage.setItem(ADMIN_KEYS.session,Date.now()+30*60*1000);closeAdminLogin();openAdminDashboard()}
 async function openAdminDashboard(){
   if(!(await isManagerSignedIn())){
     await updateManagementVisibility();
@@ -1766,69 +1572,27 @@ updateAuthUI();
 updateManagementVisibility();
 setInterval(()=>{if(adminSessionValid()===false&&document.getElementById("adminDashboardModal")?.classList.contains("open")){closeAdminDashboard();}},30000);
 setInterval(()=>{if(getCurrentUser())touchLastSeen()},5*60*1000);
-document.getElementById("adminLoginModal").addEventListener("click",function(e){if(e.target===this)closeAdminLogin()});document.getElementById("adminDashboardModal").addEventListener("click",function(e){if(e.target===this)closeAdminDashboard()});document.getElementById("adminEditProductModal").addEventListener("click",function(e){if(e.target===this)closeAdminEdit()});
+document.getElementById("adminLoginModal").addEventListener("click",function(e){if(e.target===this)closeAdminLogin()});document.getElementById("adminSetupModal").addEventListener("click",function(e){if(e.target===this)closeAdminSetup()});document.getElementById("adminDashboardModal").addEventListener("click",function(e){if(e.target===this)closeAdminDashboard()});document.getElementById("adminEditProductModal").addEventListener("click",function(e){if(e.target===this)closeAdminEdit()});
 document.getElementById('authModal').addEventListener('click',function(e){if(e.target===this)closeAuth()});document.getElementById('passwordRecoveryModal').addEventListener('click',function(e){if(e.target===this)closeRecoveryModal()});
 document.getElementById('accountModal').addEventListener('click',function(e){if(e.target===this)closeAccount()});
 document.getElementById('productPhotoModal').addEventListener('click',function(e){if(e.target===this)closeProductPhoto()});
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeProductPhoto();document.querySelectorAll('.feature-modal.open').forEach(x=>x.classList.remove('open'));document.body.style.overflow=''}});
 document.querySelectorAll('.feature-modal').forEach(function(m){m.addEventListener('click',function(e){if(e.target===m)closeFeaturePanel(m.id)})});
 
-function isEmailConfirmationReturn(){
-  const hash=window.location.hash||"";
-  const query=window.location.search||"";
-  return /(?:^|[&#?])type=signup(?:&|#|$)/i.test(hash+"#") ||
-         /(?:^|[?&])type=signup(?:&|$)/i.test(query) ||
-         /(?:^|[&#?])type=magiclink(?:&|#|$)/i.test(hash+"#");
-}
-
-async function restoreSupabaseSession(){
+(async function restoreSupabaseSession(){
   try{
-    // Supabase JS automatically consumes the tokens from the email link.
     const {data:{session}}=await supabaseClient.auth.getSession();
     if(session?.user){
-      const user=await syncCurrentUserFromSession(session);
-      if(user) await touchLastSeen();
-
-      if(isEmailConfirmationReturn()){
-        closeAuth();
-        setTimeout(()=>{
-          alert("Email confirmed successfully. Your KESY MILES TECH account is now verified. You can continue using the website.");
-          try{
-            const clean=new URL(window.location.href);
-            clean.hash="";
-            clean.search=clean.search.replace(/([?&])type=signup(&?)/i,(m,p1,p2)=>p1==="?"?(p2?"?":""): (p2?"&":""));
-            window.history.replaceState({},document.title,clean.toString());
-          }catch(e){}
-        },150);
-      }
-    }else{
-      // No Supabase session means there is no valid customer login.
-      setCurrentUser(null);
+      const {data:profile}=await supabaseClient.from("profiles").select("name,email,phone,account_status").eq("id",session.user.id).maybeSingle();
+      setCurrentUser({id:session.user.id,name:profile?.name||session.user.user_metadata?.name||"Customer",email:session.user.email||profile?.email||"",phone:profile?.phone||session.user.user_metadata?.phone||""}); await touchLastSeen();
     }
     await updateManagementVisibility();
   }catch(e){console.warn("Supabase session restore failed",e); await updateManagementVisibility()}
   testSupabaseConnection();
-}
-restoreSupabaseSession();
+})();
 supabaseClient.auth.onAuthStateChange((event,session)=>{
   if(event==="PASSWORD_RECOVERY"){setTimeout(()=>document.getElementById("passwordRecoveryModal").classList.add("open"),50);}
-  // Only clear the customer UI for a real sign-out. Other auth events can carry a
-  // temporarily unavailable/null session while Supabase restores or refreshes it.
-  if(event==="SIGNED_OUT"){setCurrentUser(null);}
-  else if(session?.user){
-    setTimeout(async()=>{
-      await syncCurrentUserFromSession(session);
-      if(event==="SIGNED_IN" && isEmailConfirmationReturn()){
-        closeAuth();
-        alert("Email confirmed successfully. Your KESY MILES TECH account is now verified.");
-        try{
-          const clean=new URL(window.location.href);
-          clean.hash="";
-          window.history.replaceState({},document.title,clean.toString());
-        }catch(e){}
-      }
-    },0);
-  }
+  if(!session) setCurrentUser(null);
   setTimeout(updateManagementVisibility,50);
 });
 </script>
