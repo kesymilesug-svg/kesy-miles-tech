@@ -1411,18 +1411,19 @@ async function signupUser(e){
 }
 
 async function logoutUser(){
-  // Save the customer's cart under that customer's own key before signing out.
+  // Persist this customer's cart before ending the Supabase session.
   const user=getCurrentUser();
   if(user?.id){
     loggedOutCartLock=false;
     saveCartForUser(user);
   }
-  // Lock and clear the active cart BEFORE Supabase finishes signing out. This prevents
-  // an old guest/previous-user cart from being rendered during the auth transition.
   clearActiveCartOnLogout();
+  localStorage.removeItem("kesyMilesCurrentUser");
+  currentUserCache=null;
   try{await supabaseClient.auth.signOut()}catch(e){console.warn(e)}
-  setCurrentUser(null);
-  alert("You have been logged out. Your cart has been cleared.");
+  updateAuthUI();
+  await updateManagementVisibility(null);
+  alert("You have been logged out. Your cart is safely saved to your account and will return when you log in again.");
 }
 function updateAuthUI(){
   const user=getCurrentUser();
@@ -1611,16 +1612,29 @@ async function isManagerSignedIn(){
     return !!user && String(user.email||"").trim().toLowerCase()===MANAGER_EMAIL;
   }catch(e){ return false; }
 }
-async function updateManagementVisibility(){
+async function updateManagementVisibility(sessionOverride=null){
   const btn=document.getElementById("managerNavBtn");
-  if(!btn)return;
-  const allowed=await isManagerSignedIn();
-  btn.style.display=allowed?"inline-flex":"none";
-  if(!allowed){
-    localStorage.removeItem(ADMIN_KEYS.session);
-    closeAdminLogin();
-    closeAdminDashboard();
+  if(!btn)return false;
+  let allowed=false;
+  try{
+    // Prefer the session supplied by onAuthStateChange. This avoids hiding
+    // management during the short moment Supabase refreshes a token.
+    const sessionUser=sessionOverride?.user;
+    if(sessionUser){
+      allowed=String(sessionUser.email||"").trim().toLowerCase()===MANAGER_EMAIL;
+    }else{
+      const {data:{session}}=await supabaseClient.auth.getSession();
+      const u=session?.user;
+      allowed=!!u && String(u.email||"").trim().toLowerCase()===MANAGER_EMAIL;
+    }
+  }catch(e){
+    console.warn("Management visibility check failed",e);
+    return false;
   }
+  btn.style.display=allowed?"inline-flex":"none";
+  // Do NOT close the dashboard merely because a temporary auth refresh
+  // returned no user. A real SIGNED_OUT event handles logout below.
+  return allowed;
 }
 
 function managerNotice(text,show=true){
@@ -1692,10 +1706,16 @@ function escapeHtml(value){
   return String(value??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 }
 
-const ADMIN_KEYS={session:"kesyMilesAdminSession",fails:"kesyMilesAdminFails",lock:"kesyMilesAdminLock"};
-function adminSessionValid(){const x=Number(localStorage.getItem(ADMIN_KEYS.session)||0);return x>Date.now()}
+const ADMIN_KEYS={session:"kesyMilesAdminSession",fails:"kesyMilesAdminFails",lock:"kesyMilesAdminLock",open:"kesyMilesAdminOpen"};
+// Management authorization is the Supabase manager session itself. Do not use a
+// separate 30-minute browser timer that can randomly close the dashboard.
+function adminSessionValid(){return true}
 async function openAdminLogin(){
-  if(adminSessionValid() && await isManagerSignedIn()){openAdminDashboard();return}
+  if(await isManagerSignedIn()){
+    localStorage.setItem(ADMIN_KEYS.open,"1");
+    openAdminDashboard();
+    return;
+  }
   const email=document.getElementById("adminEmail");
   if(email) email.value=MANAGER_EMAIL;
   document.getElementById("adminLoginModal").classList.add("open");
@@ -1719,10 +1739,11 @@ async function adminLogin(e){
     }
     localStorage.removeItem(ADMIN_KEYS.fails);
     localStorage.removeItem(ADMIN_KEYS.lock);
-    localStorage.setItem(ADMIN_KEYS.session,Date.now()+30*60*1000);
-    await updateManagementVisibility();
+    localStorage.setItem(ADMIN_KEYS.session,"1");
+    localStorage.setItem(ADMIN_KEYS.open,"1");
+    await updateManagementVisibility(data?.session||null);
     closeAdminLogin();
-    openAdminDashboard();
+    await openAdminDashboard();
   }catch(err){
     let f=Number(localStorage.getItem(ADMIN_KEYS.fails)||0)+1;
     localStorage.setItem(ADMIN_KEYS.fails,f);
@@ -1735,13 +1756,23 @@ async function openAdminDashboard(){
     await updateManagementVisibility();
     return;
   }
-  if(!adminSessionValid()){openAdminLogin();return}
+  localStorage.setItem(ADMIN_KEYS.session,"1");
+  localStorage.setItem(ADMIN_KEYS.open,"1");
   renderAdminDashboard();
   document.getElementById("adminDashboardModal").classList.add("open");
   document.body.style.overflow="hidden";
 }
-function closeAdminDashboard(){document.getElementById("adminDashboardModal").classList.remove("open");document.body.style.overflow=""}
-function adminLogout(){localStorage.removeItem(ADMIN_KEYS.session);closeAdminDashboard()}
+function closeAdminDashboard(){
+  document.getElementById("adminDashboardModal").classList.remove("open");
+  document.body.style.overflow="";
+  // Closing the window is not signing out. Keep manager authorization alive.
+}
+async function adminLogout(){
+  localStorage.removeItem(ADMIN_KEYS.session);
+  localStorage.removeItem(ADMIN_KEYS.open);
+  closeAdminDashboard();
+  try{await supabaseClient.auth.signOut();}catch(e){console.warn(e)}
+}
 function showAdminTab(name,btn){document.querySelectorAll(".admin-panel").forEach(x=>x.classList.remove("active"));document.getElementById("adminTab-"+name).classList.add("active");document.querySelectorAll(".admin-tabs button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");if(name==='customers')loadManagerCustomers();if(name==='products')renderAdminProducts();if(name==='orders')renderAdminOrders();if(name==='settings')loadAdminSettings()}
 function adminToast(t){const x=document.getElementById("adminToast");x.textContent=t;x.classList.add("show");setTimeout(()=>x.classList.remove("show"),2200)}
 function renderAdminDashboard(){document.getElementById("adminTotalProducts").textContent=products.length;document.getElementById("adminAvailableProducts").textContent=products.filter(p=>p.status!=="soldout").length;document.getElementById("adminSoldProducts").textContent=products.filter(p=>p.status==="soldout").length;document.getElementById("adminOrderCount").textContent=getOrders().length;renderAdminProducts();renderAdminOrders();loadAdminSettings();loadManagerCustomers()}
@@ -1764,9 +1795,12 @@ renderProducts();
 updateCart();
 updateAuthUI();
 updateManagementVisibility();
-setInterval(()=>{if(adminSessionValid()===false&&document.getElementById("adminDashboardModal")?.classList.contains("open")){closeAdminDashboard();}},30000);
+// Supabase controls the real manager session; there is no artificial 30-minute expiry.
 setInterval(()=>{if(getCurrentUser())touchLastSeen()},5*60*1000);
-document.getElementById("adminLoginModal").addEventListener("click",function(e){if(e.target===this)closeAdminLogin()});document.getElementById("adminDashboardModal").addEventListener("click",function(e){if(e.target===this)closeAdminDashboard()});document.getElementById("adminEditProductModal").addEventListener("click",function(e){if(e.target===this)closeAdminEdit()});
+document.getElementById("adminLoginModal").addEventListener("click",function(e){if(e.target===this)closeAdminLogin()});
+// Management stays open when the user taps outside its content. Use the X button
+// or Management sign-out to close/leave it.
+document.getElementById("adminDashboardModal").addEventListener("click",function(e){if(e.target===this){e.stopPropagation();}});document.getElementById("adminEditProductModal").addEventListener("click",function(e){if(e.target===this)closeAdminEdit()});
 document.getElementById('authModal').addEventListener('click',function(e){if(e.target===this)closeAuth()});document.getElementById('passwordRecoveryModal').addEventListener('click',function(e){if(e.target===this)closeRecoveryModal()});
 document.getElementById('accountModal').addEventListener('click',function(e){if(e.target===this)closeAccount()});
 document.getElementById('productPhotoModal').addEventListener('click',function(e){if(e.target===this)closeProductPhoto()});
@@ -1783,53 +1817,55 @@ function isEmailConfirmationReturn(){
 
 async function restoreSupabaseSession(){
   try{
-    // Supabase JS automatically consumes the tokens from the email link.
     const {data:{session}}=await supabaseClient.auth.getSession();
     if(session?.user){
       const user=await syncCurrentUserFromSession(session);
       if(user) await touchLastSeen();
-
-      if(isEmailConfirmationReturn()){
-        closeAuth();
-        setTimeout(()=>{
-          alert("Email confirmed successfully. Your KESY MILES TECH account is now verified. You can continue using the website.");
-          try{
-            const clean=new URL(window.location.href);
-            clean.hash="";
-            clean.search=clean.search.replace(/([?&])type=signup(&?)/i,(m,p1,p2)=>p1==="?"?(p2?"?":""): (p2?"&":""));
-            window.history.replaceState({},document.title,clean.toString());
-          }catch(e){}
-        },150);
+      const manager=String(session.user.email||"").trim().toLowerCase()===MANAGER_EMAIL;
+      await updateManagementVisibility(session);
+      if(manager && localStorage.getItem(ADMIN_KEYS.open)==="1"){
+        setTimeout(()=>openAdminDashboard(),120);
       }
     }else{
-      // No Supabase session means there is no valid customer login.
+      // A genuinely logged-out browser starts with no customer cart.
       setCurrentUser(null);
+      await updateManagementVisibility(null);
     }
-    await updateManagementVisibility();
-  }catch(e){console.warn("Supabase session restore failed",e); await updateManagementVisibility()}
+  }catch(e){
+    console.warn("Supabase session restore failed",e);
+  }
   testSupabaseConnection();
 }
 restoreSupabaseSession();
 supabaseClient.auth.onAuthStateChange((event,session)=>{
-  if(event==="PASSWORD_RECOVERY"){setTimeout(()=>document.getElementById("passwordRecoveryModal").classList.add("open"),50);}
-  // Only clear the customer UI for a real sign-out. Other auth events can carry a
-  // temporarily unavailable/null session while Supabase restores or refreshes it.
-  if(event==="SIGNED_OUT"){setCurrentUser(null);}
-  else if(session?.user){
+  if(event==="PASSWORD_RECOVERY"){
+    setTimeout(()=>document.getElementById("passwordRecoveryModal").classList.add("open"),50);
+    return;
+  }
+
+  if(event==="SIGNED_OUT"){
+    localStorage.removeItem(ADMIN_KEYS.session);
+    localStorage.removeItem(ADMIN_KEYS.open);
+    setCurrentUser(null);
+    updateManagementVisibility(null);
+    return;
+  }
+
+  if(session?.user){
     setTimeout(async()=>{
-      await syncCurrentUserFromSession(session);
-      if(event==="SIGNED_IN" && isEmailConfirmationReturn()){
-        closeAuth();
-        alert("Email confirmed successfully. Your KESY MILES TECH account is now verified.");
-        try{
-          const clean=new URL(window.location.href);
-          clean.hash="";
-          window.history.replaceState({},document.title,clean.toString());
-        }catch(e){}
+      const user=await syncCurrentUserFromSession(session);
+      const manager=String(session.user.email||"").trim().toLowerCase()===MANAGER_EMAIL;
+      await updateManagementVisibility(session);
+      if(manager){
+        localStorage.setItem(ADMIN_KEYS.session,"1");
+        // Re-open management after a refresh/token renewal if it was open before.
+        if(localStorage.getItem(ADMIN_KEYS.open)==="1" && !document.getElementById("adminDashboardModal")?.classList.contains("open")){
+          openAdminDashboard();
+        }
       }
+      if(user) await touchLastSeen();
     },0);
   }
-  setTimeout(updateManagementVisibility,50);
 });
 </script>
 </body>
