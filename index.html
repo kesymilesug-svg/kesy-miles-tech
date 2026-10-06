@@ -970,11 +970,12 @@ window.kesySupabase = supabaseClient;
 // This does not change the site's visual layout or design.
 const KESY_AUTH_REDIRECT = (() => {
   try {
-    const u = new URL(window.location.href);
-    u.hash = "";
+    // Always return customers to the clean website URL after verification.
+    // Do not carry Supabase auth fragments, query strings, or modal state forward.
+    const u = new URL(window.location.origin + window.location.pathname);
     return u.toString();
   } catch(e) {
-    return window.location.href;
+    return window.location.origin + window.location.pathname;
   }
 })();
 
@@ -1295,38 +1296,75 @@ async function loginUser(e){
   e.preventDefault();
   const identifier=document.getElementById("loginIdentifier").value.trim().toLowerCase();
   const password=document.getElementById("loginPassword").value;
-  let email=identifier;
+  if(!identifier||!password){
+    showAuthMessage("loginMessage","Please enter your email/phone and password.","error");
+    return;
+  }
   try{
+    let email=identifier;
     if(!identifier.includes("@")){
       const {data:rpcEmail,error}=await supabaseClient.rpc("get_email_by_phone",{p_phone:identifier});
       if(error) throw error;
-      email=rpcEmail||"";
+      email=String(rpcEmail||"").trim().toLowerCase();
       if(!email) throw new Error("No account was found for that phone number.");
     }
     const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
-    if(error) throw error;
+    if(error){
+      const msg=String(error.message||"");
+      if(/email.*not.*confirm|email.*confirm/i.test(msg)){
+        throw new Error("Please confirm your email address first, then log in again.");
+      }
+      throw error;
+    }
     const u=data.user;
-    const {data:profile}=await supabaseClient.from("profiles").select("name,email,phone,account_status").eq("id",u.id).maybeSingle();
+    const {data:profile}=await supabaseClient.from("profiles")
+      .select("name,email,phone,account_status")
+      .eq("id",u.id).maybeSingle();
     if(profile?.account_status==="suspended"){
       await supabaseClient.auth.signOut();
       throw new Error("This account has been suspended. Please contact KESY MILES TECH.");
     }
-    setCurrentUser({id:u.id,name:profile?.name||u.user_metadata?.name||"Customer",email:u.email,phone:profile?.phone||u.user_metadata?.phone||""});
+    setCurrentUser({
+      id:u.id,
+      name:profile?.name||u.user_metadata?.name||"Customer",
+      email:u.email,
+      phone:profile?.phone||u.user_metadata?.phone||""
+    });
     await touchLastSeen();
-    closeAuth(); alert("Welcome back, "+(profile?.name||u.user_metadata?.name||"Customer")+"!");
+    closeAuth();
+    alert("Welcome back, "+(profile?.name||u.user_metadata?.name||"Customer")+"!");
   }catch(err){
     showAuthMessage("loginMessage",err.message||"Login failed. Check your details and try again.","error");
-    console.warn(err);
+    console.warn("KESY login:",err);
   }
 }
+
+function validateSignupFields(name,email,phone,password,confirm){
+  if(name.length<2) return "Please enter your full name.";
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Please enter a valid email address.";
+  if(phone.length<7) return "Please enter a valid phone number.";
+  if(password.length<8) return "Password must be at least 8 characters.";
+  if(password!==confirm) return "Passwords do not match.";
+  return "";
+}
+
 async function signupUser(e){
   e.preventDefault();
+  const form=e.target;
   const name=document.getElementById("signupName").value.trim();
   const email=document.getElementById("signupEmail").value.trim().toLowerCase();
   const phone=document.getElementById("signupPhone").value.trim();
   const password=document.getElementById("signupPassword").value;
   const confirm=document.getElementById("signupConfirm").value;
-  if(password!==confirm){showAuthMessage("signupMessage","Passwords do not match.","error");return}
+  const validation=validateSignupFields(name,email,phone,password,confirm);
+  if(validation){
+    showAuthMessage("signupMessage",validation,"error");
+    return;
+  }
+
+  const submit=form.querySelector('button[type="submit"]');
+  if(submit){submit.disabled=true;submit.dataset.oldText=submit.textContent;submit.textContent="Creating account...";}
+
   try{
     const {data,error}=await supabaseClient.auth.signUp({
       email,
@@ -1336,10 +1374,19 @@ async function signupUser(e){
         emailRedirectTo:KESY_AUTH_REDIRECT
       }
     });
-    if(error) throw error;
+
+    if(error){
+      const msg=String(error.message||"");
+      if(/rate limit|too many|email.*rate/i.test(msg)){
+        throw new Error("The Supabase email service has reached its testing limit. Your website is ready for production SMTP, but the email provider must be changed in Supabase before new verification emails can be sent.");
+      }
+      if(/already registered|already exists|user already/i.test(msg)){
+        throw new Error("An account with this email already exists. Please log in, or use Forgot Password if you cannot remember the password.");
+      }
+      throw error;
+    }
+
     if(data.user){
-      // The database trigger creates the profile row automatically after signup.
-      // Do not write to public.profiles here; this also works when email confirmation is required.
       if(data.session){
         setCurrentUser({id:data.user.id,name,email,phone});
         closeAuth();
@@ -1347,14 +1394,22 @@ async function signupUser(e){
       }else{
         showAuthMessage(
           "signupMessage",
-          "Account created. Check your email and tap the confirmation link. Supabase will verify the account automatically and return you to KESY MILES TECH.",
+          "Account created successfully. Please open the confirmation email and tap the confirmation link. You will be returned automatically to KESY MILES TECH.",
           "success"
         );
       }
+      form.reset();
+    }else{
+      throw new Error("The account could not be created. Please try again.");
     }
-    e.target.reset();
-  }catch(err){showAuthMessage("signupMessage",err.message||"Account creation failed. Check your Supabase setup.","error");console.warn(err)}
+  }catch(err){
+    showAuthMessage("signupMessage",err.message||"Account creation failed. Please try again.","error");
+    console.warn("KESY signup:",err);
+  }finally{
+    if(submit){submit.disabled=false;submit.textContent=submit.dataset.oldText||"Create Account";}
+  }
 }
+
 async function logoutUser(){
   // Save the customer's cart under that customer's own key before signing out.
   const user=getCurrentUser();
@@ -1721,8 +1776,9 @@ document.querySelectorAll('.feature-modal').forEach(function(m){m.addEventListen
 function isEmailConfirmationReturn(){
   const hash=window.location.hash||"";
   const query=window.location.search||"";
-  return /(^|[&#?])type=signup(&|#|$)/i.test(hash+"#") ||
-         /(^|[?&])type=signup(&|$)/i.test(query);
+  return /(?:^|[&#?])type=signup(?:&|#|$)/i.test(hash+"#") ||
+         /(?:^|[?&])type=signup(?:&|$)/i.test(query) ||
+         /(?:^|[&#?])type=magiclink(?:&|#|$)/i.test(hash+"#");
 }
 
 async function restoreSupabaseSession(){
