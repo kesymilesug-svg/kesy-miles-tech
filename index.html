@@ -1197,20 +1197,52 @@ function scrollViewed(direction){
   const row=document.getElementById("cartViewedItems");
   if(row) row.scrollBy({left:direction*Math.max(row.clientWidth*0.78,300),behavior:"smooth"});
 }
-function emailOrder(){
+async function getOrderPhotoLink(p,orderToken,index){
+  const src=(getProductPhotos(p)[0]||p.img||"").trim();
+  if(!src)return "";
+  if(/^https?:\/\//i.test(src))return src;
+  if(!src.startsWith("data:"))return "";
+  try{
+    const response=await fetch(src);
+    const blob=await response.blob();
+    const ext=(blob.type||"image/jpeg").split("/")[1]||"jpg";
+    const safeName=String(p.name||"product").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,50)||"product";
+    const path=`orders/${orderToken}/${index}-${safeName}.${ext}`;
+    const {error}=await supabaseClient.storage.from("product-images").upload(path,blob,{contentType:blob.type||"image/jpeg",upsert:true});
+    if(error)throw error;
+    const {data}=supabaseClient.storage.from("product-images").getPublicUrl(path);
+    return data?.publicUrl||"";
+  }catch(err){
+    console.warn("Product photo could not be uploaded to Supabase Storage. Create a public 'product-images' bucket to enable order photo links.",err);
+    return "";
+  }
+}
+async function buildOrderPhotoLines(){
+  const token=Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8);
+  const lines=[];
+  for(let i=0;i<cart.length;i++){
+    const p=cart[i];
+    const link=await getOrderPhotoLink(p,token,i);
+    lines.push(`- ${p.name} x${p.qty}${link?`\n  Product photo: ${link}`:`\n  Product photo: Please view this exact product on the KESY MILES TECH website.`}`);
+  }
+  return lines.join("\n");
+}
+async function emailOrder(){
   if(!cart.length){alert("Your cart is empty.");return}
+  const photoLines=await buildOrderPhotoLines();
   const items=cart.map(p=>`${p.name} x${p.qty}`).join(", ");
   const total=money(cart.reduce((s,p)=>s+p.price*p.qty,0));
-  const subject=encodeURIComponent("KESY MILES TECH Order");
-  const body=encodeURIComponent(`Hello KESY MILES TECH,\n\nI want to place an order.\n\nProducts: ${items}\nTotal: ${total}\nName: ${document.getElementById("oName")?.value||""}\nPhone: ${document.getElementById("oPhone")?.value||""}\nDelivery: ${document.getElementById("oAddress")?.value||""}\nPayment: ${document.getElementById("oPayment")?.value||""}`);
+  const subject=encodeURIComponent("KESY MILES TECH Order - Product Photos Included");
+  const body=encodeURIComponent(`Hello KESY MILES TECH,\n\nI want to place an order.\n\nProducts: ${items}\n\nProduct photos:\n${photoLines}\n\nTotal: ${total}\nName: ${document.getElementById("oName")?.value||""}\nPhone: ${document.getElementById("oPhone")?.value||""}\nDelivery: ${document.getElementById("oAddress")?.value||""}\nPayment: ${document.getElementById("oPayment")?.value||""}`);
   window.location.href=`mailto:newtonisaac.oj.ac@gmail.com?subject=${subject}&body=${body}`;
 }
 async function checkout(e){
   e.preventDefault();
   if(!cart.length){alert("Your cart is empty.");return}
+  const photoLines=await buildOrderPhotoLines();
   const items=cart.map(p=>`${p.name} x${p.qty}`).join(", ");
   const total=money(cart.reduce((s,p)=>s+p.price*p.qty,0));
-  const msg=`Hello KESY MILES TECH, I want to place an order.%0A%0AProducts: ${encodeURIComponent(items)}%0ATotal: ${encodeURIComponent(total)}%0AName: ${encodeURIComponent(oName.value)}%0APhone: ${encodeURIComponent(oPhone.value)}%0ADelivery: ${encodeURIComponent(oAddress.value)}%0APayment: ${encodeURIComponent(oPayment.value)}`;
+  const msg=`Hello KESY MILES TECH, I want to place an order.%0A%0AProducts: ${encodeURIComponent(items)}%0A%0AProduct photos:%0A${encodeURIComponent(photoLines)}%0A%0ATotal: ${encodeURIComponent(total)}%0AName: ${encodeURIComponent(oName.value)}%0APhone: ${encodeURIComponent(oPhone.value)}%0ADelivery: ${encodeURIComponent(oAddress.value)}%0APayment: ${encodeURIComponent(oPayment.value)}`;
   const current=getCurrentUser();
   if(current) await recordOrder(items,total,current);
   window.open("https://wa.me/256760619598?text="+msg,"_blank");
