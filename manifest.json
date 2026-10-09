@@ -1,17 +1,17 @@
 {
-  "background_color": "#ffffff",
+  "id": "/",
+  "name": "KESY MILES TECH",
+  "short_name": "KESY MILES",
   "description": "KESY MILES TECH - laptops, smartphones, cameras, flat screens, radios and accessories. Delivery, repairs, installations and internet installation available at Amuca Trading Centre.",
-  "dir": "auto",
-  "display": "standalone",
-  "name": "kesy-miles-tech.vercel",
-  "orientation": "any",
-  "scope": "/https://kesy-miles-tech.vercel.app/",
-  "short_name": "kesy-miles-tech.vercel",
-  "start_url": "/https://kesy-miles-tech.vercel.app/",
-  "theme_color": "#092387",
-  "id": "Kesy Miles Tech ",
   "lang": "en",
-  "prefer_related_applications": true,
+  "dir": "auto",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#092387",
+  "prefer_related_applications": false,
   "categories": [
     "business"
   ]
