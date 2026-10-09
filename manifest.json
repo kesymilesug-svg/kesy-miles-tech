@@ -6,7 +6,8 @@
   "name": "kesy-miles-tech.vercel",
   "orientation": "any",
   "scope": "/",
-  "short_name": "kesy-miles-tech.vercel",
+  "short_name": "Kesy Miles tec",
   "start_url": "/",
-  "theme_color": "#ffffff"
+  "theme_color": "#ffffff",
+  "id": "kesy-miles-tech"
 }
